@@ -117,27 +117,20 @@ void DrawRanking(void) {
 
     // Variáveis de layout
     int startY = 180;
-    int listHeight = SCORES_PER_PAGE * 45; // Altura total da lista (~450px)
-    int listCenterY = startY + 40 + (listHeight / 2); // Centro vertical da lista
+    int listHeight = SCORES_PER_PAGE * 45; 
+    int listCenterY = startY + 40 + (listHeight / 2); 
 
     // ====================================================================
     // LADO DIREITO: LOGO GRANDE E CENTRALIZADA
     // ====================================================================
     if (isLogoLoaded) {
-        float logoSize = 380.0f; // Tamanho aumentado conforme pedido
-        
-        // Centraliza na metade DIREITA da tela (X: 400 a 800 -> Centro 600)
+        float logoSize = 380.0f; 
         float destX = (SCREEN_WIDTH * 0.75f) - (logoSize / 2.0f);
-        
-        // Centraliza na mesma altura dos jogadores
         float destY = listCenterY - (logoSize / 2.0f); 
-        
         Rectangle destRect = { destX, destY, logoSize, logoSize };
         Rectangle srcRect = { 0, 0, (float)logoTexture.width, (float)logoTexture.height };
-        
         DrawTexturePro(logoTexture, srcRect, destRect, (Vector2){0, 0}, 0.0f, WHITE);
     } else {
-        // Fallback (Quadrado amarelo)
         int size = 300;
         int x = (SCREEN_WIDTH * 0.75f) - (size / 2);
         int y = listCenterY - (size / 2);
@@ -149,21 +142,23 @@ void DrawRanking(void) {
     // LADO ESQUERDO: TABELA DE PONTUAÇÃO
     // ====================================================================
 
-    // Ajusta coordenadas X para ficarem na metade esquerda (0 a 400)
     int titleCenterX = SCREEN_WIDTH / 4; // 200
     
     DrawText("HALL DA FAMA", titleCenterX - MeasureText("HALL DA FAMA", 40)/2, 60, 40, GOLD);
     DrawText("Use < SETAS > para mudar", titleCenterX - MeasureText("Use < SETAS > para mudar", 20)/2, 115, 20, SKYBLUE);
     DrawLine(30, 150, (SCREEN_WIDTH/2) - 30, 150, GOLD);
 
-    // Colunas compactas
+    // --- AJUSTE DE COLUNAS AQUI ---
     int xPos = 30;
-    int xName = 100;
-    int xScore = 280;
+    int xName = 85;   // Antes era 100 (Mais para esquerda)
+    int xScore = 320; // Antes era 280 (Mais para direita)
 
     DrawText("POS", xPos, startY, 20, YELLOW);
     DrawText("NOME", xName, startY, 20, YELLOW);
-    DrawText("PONTUACAO", xScore, startY, 20, YELLOW);
+    
+    // Ajuste visual: O texto "PONTUACAO" é largo, então desenhamos ele um pouco 
+    // antes do xScore numérico para ficar alinhado visualmente
+    DrawText("PONTUACAO", xScore - 20, startY, 20, YELLOW);
 
     int startIndex = currentPage * SCORES_PER_PAGE;
     int endIndex = startIndex + SCORES_PER_PAGE;
@@ -180,18 +175,20 @@ void DrawRanking(void) {
             else if (i == 2) rowColor = (Color){205, 127, 50, 255};
         }
 
-        // Fundo alternado (apenas metade esquerda)
         if (relIndex % 2 == 0) {
             DrawRectangle(20, y - 5, (SCREEN_WIDTH/2) - 40, 40, (Color){255, 255, 255, 10});
         }
 
         DrawText(TextFormat("#%02d", i + 1), xPos, y, 24, rowColor);
         
-        // Limita visualmente o nome se for muito grande
-        char displayBuffer[20];
-        if (strlen(highScores[i].name) > 13) {
-             strncpy(displayBuffer, highScores[i].name, 10);
-             displayBuffer[10] = '\0';
+        // --- AJUSTE DE CORTE DE TEXTO ---
+        // Buffer aumentado para caber strings maiores
+        char displayBuffer[30]; 
+        
+        // Aumentei o limite de 13 para 19 caracteres, já que agora temos espaço
+        if (strlen(highScores[i].name) > 19) {
+             strncpy(displayBuffer, highScores[i].name, 16);
+             displayBuffer[16] = '\0';
              strcat(displayBuffer, "...");
              DrawText(displayBuffer, xName, y, 24, rowColor);
         } else {
