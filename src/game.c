@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h> // Para textformat se necessario, mas raylib ja tem
+#include "ranking.h"
 
 // -------------------------------------------------------------------------
 // 1. DEFINIÇÕES E CONSTANTES (Copiado do original)
@@ -44,7 +45,8 @@ typedef enum {
     STATE_WAITING_FOR_BALL,
     STATE_BALL_FALLING,
     STATE_BALL_LANDED,
-    STATE_GAME_OVER
+    STATE_NAME_INPUT, // <--- NOVO ESTADO
+    STATE_GAME_OVER   // (Opcional manter se quiser uma tela final antes do ranking, mas vamos pular direto)
 } InternalGameState;
 
 typedef struct {
@@ -65,6 +67,8 @@ static float firstPinY = 100.0f;
 static float firstSlotX;
 static float slotWidth;
 static float baseY;
+static char playerName[MAX_NAME_LENGTH + 1] = { 0 };
+static int letterCount = 0;
 
 static Pergunta perguntas[NUM_ETAPAS] = {
     { "Qual a capital da Franca?",      {"1. Londres", "2. Paris", "3. Berlim"}, 1 },
@@ -119,6 +123,8 @@ void InitGame(void) {
     lastAnswerWasCorrect = 0;
     lastValue = 0;
     slotColor = BLUE;
+    letterCount = 0;
+    for (int i = 0; i <= MAX_NAME_LENGTH; i++) playerName[i] = '\0';
 
     // Zera contagem dos slots
     for (int i = 0; i < SLOT_COUNT; i++) {
@@ -269,7 +275,8 @@ void UpdateGame(void) {
             if (IsKeyPressed(KEY_ENTER)) {
                 currentStage++;
                 if (currentStage >= NUM_ETAPAS) {
-                    currentState = STATE_GAME_OVER;
+                    // FIM DO JOGO -> Vai para Input de Nome
+                    currentState = STATE_NAME_INPUT; 
                 } else {
                     currentState = STATE_ASKING_QUESTION;
                     slotColor = BLUE;
@@ -277,14 +284,33 @@ void UpdateGame(void) {
             }
         } break;
 
-        case STATE_GAME_OVER: {
-            // Reiniciar (R)
-            if (IsKeyPressed(KEY_R)) {
-                InitGame(); // Chama a função que reseta as variáveis
+        // --- LÓGICA NOVA PARA CAPTURAR NOME ---
+        case STATE_NAME_INPUT: {
+            // Captura teclas char a char
+            int key = GetCharPressed();
+            while (key > 0) {
+                // Apenas caracteres imprimíveis e limite de tamanho
+                if ((key >= 32) && (key <= 125) && (letterCount < MAX_NAME_LENGTH)) {
+                    playerName[letterCount] = (char)key;
+                    playerName[letterCount + 1] = '\0'; // Terminador nulo
+                    letterCount++;
+                }
+                key = GetCharPressed(); // Próxima tecla no buffer
             }
-            // Voltar ao Menu (Q) - Funcionalidade extra para o sistema de menus
-            if (IsKeyPressed(KEY_Q)) {
-                currentScreen = SCREEN_MENU;
+
+            // Backspace para apagar
+            if (IsKeyPressed(KEY_BACKSPACE)) {
+                letterCount--;
+                if (letterCount < 0) letterCount = 0;
+                playerName[letterCount] = '\0';
+            }
+
+            // Enter para confirmar e Salvar
+            if (IsKeyPressed(KEY_ENTER)) {
+                if (letterCount > 0) { // Só aceita se tiver nome
+                    AddHighScore(playerName, totalScore); // Salva no ranking.c
+                    currentScreen = SCREEN_RANKING;       // Troca a tela global na main
+                }
             }
         } break;
     }
@@ -423,6 +449,34 @@ void DrawGame(void) {
             DrawText(TextFormat("A bola caiu no valor: %d", lastValue), 220, 80, 20, RAYWHITE);
             DrawText(resultadoTexto, (screenWidth - MeasureText(resultadoTexto, 24)) / 2, 110, 24, resultadoCor);
             DrawText("Pressione [ENTER] para a proxima etapa...", 170, 160, 20, YELLOW);
+        } break;
+
+        case STATE_NAME_INPUT: {
+            // Fundo escurecido
+            DrawRectangle(0, 0, screenWidth, screenHeight, Fade(BLACK, 0.85f));
+            
+            // Caixa estilo "The Wall"
+            int centerX = screenWidth / 2;
+            int centerY = screenHeight / 2;
+            
+            DrawText("FIM DE JOGO!", centerX - MeasureText("FIM DE JOGO!", 40)/2, centerY - 150, 40, GOLD);
+            
+            DrawText(TextFormat("PONTUACAO FINAL: %lld", totalScore), 
+                     centerX - MeasureText(TextFormat("PONTUACAO FINAL: %lld", totalScore), 30)/2, 
+                     centerY - 80, 30, GREEN);
+
+            DrawText("Digite seu nome para o Ranking:", centerX - MeasureText("Digite seu nome para o Ranking:", 20)/2, centerY, 20, WHITE);
+
+            // Caixa de input
+            DrawRectangleLines(centerX - 150, centerY + 40, 300, 50, GOLD);
+            DrawText(playerName, centerX - 140, centerY + 50, 30, YELLOW);
+
+            // Cursor piscante
+            if ((GetTime() * 2.0f) - (int)(GetTime() * 2.0f) < 0.5f) {
+                DrawText("_", centerX - 140 + MeasureText(playerName, 30), centerY + 50, 30, GOLD);
+            }
+
+            DrawText("Pressione [ENTER] para confirmar", centerX - MeasureText("Pressione [ENTER] para confirmar", 15)/2, centerY + 110, 15, LIGHTGRAY);
         } break;
 
         case STATE_GAME_OVER: {
