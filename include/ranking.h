@@ -1,8 +1,9 @@
 #ifndef RANKING_H
 #define RANKING_H
 
-// Define quantos scores vamos guardar
-#define MAX_HIGH_SCORES 5 
+// Aumentamos para 50 para justificar a paginação
+#define MAX_HIGH_SCORES 50 
+#define SCORES_PER_PAGE 10
 #define MAX_NAME_LENGTH 15
 
 typedef struct {
@@ -10,12 +11,9 @@ typedef struct {
     long long score;
 } HighScore;
 
-// Funções de ciclo de vida da tela
 void InitRanking(void);
 void UpdateRanking(void);
 void DrawRanking(void);
-
-// Função para salvar um novo score (chamada pelo game.c)
 void AddHighScore(const char* playerName, long long score);
 
 #endif

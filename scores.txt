@@ -1,0 +1,30 @@
+Luciano Hulk,1500000
+Mestre Do C,1250000
+Dennis Ritchie,980500
+Ada Lovelace,850000
+Alan Turing,800000
+Linus Torvalds,750000
+Raylib Master,720000
+Dev Senior,650000
+FullStack,600000
+O Estagiario,555000
+Sortudo,500000
+Parede Alta,480000
+Clandestino,450000
+Jogador 1,400000
+GigaChad,350000
+Bug Hunter,300000
+SegFault,250000
+NullPointer,200000
+Hello World,150000
+Compile Error,120000
+Azarado,100000
+NoobMaster69,90000
+Quase La,80000
+Sem Sorte,50000
+Perdeu Tudo,25000
+Teste Alpha,10000
+Visitante,5000
+Iniciante,1000
+Zero a Esquerda,500
+So Atraso,1
