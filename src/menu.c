@@ -5,6 +5,7 @@
 
 extern GameScreen currentScreen;
 
+extern Music bgMusic;
 static int menuSelection = 0;
 
 typedef enum {
@@ -36,6 +37,9 @@ static float videoTimer = 0.0f;
 
 // Helpers
 static void StartIntroMedia(void) {
+
+    StopMusicStream(bgMusic);
+
     // VIDEO
     if (introVideoLoaded) {
         UnloadMedia(&introMedia);
@@ -80,6 +84,10 @@ void InitMenu(void) {
     fadeAlpha = 0.0f;
     videoTimer = 0.0f;
     // Não carregamos nada aqui; carregamos ao disparar a sequência para evitar custo inicial
+
+    if (!IsMusicStreamPlaying(bgMusic)) {
+        PlayMusicStream(bgMusic);
+    }
 }
 
 void UpdateMenu(void) {

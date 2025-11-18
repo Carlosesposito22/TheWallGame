@@ -10,15 +10,26 @@
 #include <stdlib.h>
 #include <time.h>
 
+Music bgMusic; 
+
 GameScreen currentScreen = SCREEN_MENU;
 GameScreen lastScreen = -1; 
 
 void TransitionScreen() {
     if (currentScreen != lastScreen) {
         switch (currentScreen) {
-            case SCREEN_MENU: InitMenu(); break;
-            case SCREEN_GAME: InitGame(); break;
-            case SCREEN_RANKING: InitRanking(); break;
+            case SCREEN_MENU: 
+                InitMenu(); 
+                if (!IsMusicStreamPlaying(bgMusic)) PlayMusicStream(bgMusic);
+                break;
+            case SCREEN_GAME: 
+                InitGame(); 
+                StopMusicStream(bgMusic);
+                break;
+            case SCREEN_RANKING: 
+                InitRanking();
+                if (!IsMusicStreamPlaying(bgMusic)) PlayMusicStream(bgMusic);
+                break;
         }
         lastScreen = currentScreen;
     }
@@ -26,11 +37,20 @@ void TransitionScreen() {
 
 int main(void) {
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "The Wall");
+    InitAudioDevice();
     SetTargetFPS(60);
     srand((unsigned)time(NULL));
 
+    bgMusic = LoadMusicStream("assets/musica-principal.mp3");
+    SetMusicVolume(bgMusic, 1.0f); 
+    PlayMusicStream(bgMusic);
+
     while (!WindowShouldClose()) {
         
+        if (IsMusicStreamPlaying(bgMusic)) {
+            UpdateMusicStream(bgMusic);
+        }
+
         TransitionScreen();
 
         switch (currentScreen) {
@@ -48,6 +68,9 @@ int main(void) {
         EndDrawing();
     }
 
+    // Limpeza
+    UnloadMusicStream(bgMusic);
+    CloseAudioDevice();
     CloseWindow();
     return 0;
 }
