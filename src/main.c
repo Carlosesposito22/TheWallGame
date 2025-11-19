@@ -42,11 +42,11 @@ int main(void) {
     srand((unsigned)time(NULL));
 
     bgMusic = LoadMusicStream("assets/musica-principal.mp3");
-    SetMusicVolume(bgMusic, 1.0f); 
+    SetMusicVolume(bgMusic, 1.0f);
     PlayMusicStream(bgMusic);
 
     while (!WindowShouldClose()) {
-        
+
         if (IsMusicStreamPlaying(bgMusic)) {
             UpdateMusicStream(bgMusic);
         }
