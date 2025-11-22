@@ -24,9 +24,8 @@
 #define TRAIL_LENGTH 12
 #define SHAKE_DURATION 0.4f
 #define UI_ANIM_SPEED 3.0f
-#define MAX_PREDICTION_PATHS 8  // Número máximo de caminhos visuais
+#define MAX_PREDICTION_PATHS 8 
 
-// Cores do tema "Game Show Moderno"
 static const Color COLOR_BG = { 8, 12, 32, 255 };
 static const Color COLOR_NEON_BLUE = { 0, 200, 255, 255 };
 static const Color COLOR_NEON_GOLD = { 255, 215, 0, 255 };
@@ -35,8 +34,8 @@ static const Color COLOR_NEON_GREEN = { 50, 255, 150, 255 };
 static const Color COLOR_NEON_RED = { 255, 50, 100, 255 };
 static const Color COLOR_UI_BG = { 20, 25, 45, 220 };
 static const Color COLOR_UI_BORDER = { 70, 130, 230, 255 };
-static const Color COLOR_PREDICTION = { 100, 255, 255, 120 }; // Ciano para previsões
-static const Color COLOR_PATH = { 255, 255, 100, 80 }; // Amarelo para caminhos
+static const Color COLOR_PREDICTION = { 100, 255, 255, 120 };
+static const Color COLOR_PATH = { 255, 255, 100, 80 };
 
 static const int screenWidth = SCREEN_WIDTH;
 static const int screenHeight = SCREEN_HEIGHT;
@@ -113,6 +112,8 @@ static float slotWidth;
 static float baseY;
 static char playerName[MAX_NAME_LENGTH + 1] = { 0 };
 static int letterCount = 0;
+static int slowMoActive = 0;
+static float slowMoFactor = 0.20f;
 
 static Pergunta perguntas[NUM_ETAPAS] = {
     { "Qual a capital da Franca?",
@@ -426,6 +427,49 @@ void UpdateScreenShake(float dt) {
 }
 
 // =========================================================================
+// CÂMERA LENTA (SLOW MOTION)
+// =========================================================================
+void UpdateSlowMotion(void) {
+    slowMoActive = IsKeyDown(KEY_S);
+}
+
+float ApplyTimeScale(float dt) {
+    return slowMoActive ? (dt * slowMoFactor) : dt;
+}
+
+void DrawSlowMotionIndicator(void) {
+    float pulse = sinf(GetTime() * 7.0f) * 0.5f + 0.5f;
+    unsigned char alpha = (unsigned char)(80 + 120 * pulse);
+
+    int cx = screenWidth / 2;
+    int cy = screenHeight / 2;
+
+    float size = 26.0f;      
+    float width = size * 1.4f; 
+
+    Vector2 v1 = (Vector2){ cx - width, cy };        
+    Vector2 v2 = (Vector2){ cx + width * 0.6f, cy - size };
+    Vector2 v3 = (Vector2){ cx + width * 0.6f, cy + size };
+
+    Color fill = (Color){ COLOR_NEON_BLUE.r, COLOR_NEON_BLUE.g, COLOR_NEON_BLUE.b, alpha };
+    Color border = (Color){ COLOR_NEON_GOLD.r, COLOR_NEON_GOLD.g, COLOR_NEON_GOLD.b, (unsigned char)(180 * (0.6f + 0.4f * pulse)) };
+
+    Color glow = (Color){ COLOR_NEON_BLUE.r, COLOR_NEON_BLUE.g, COLOR_NEON_BLUE.b, (unsigned char)(50 + 60 * pulse) };
+    DrawCircle(cx, cy, 60, glow);
+
+    Vector2 sv1 = (Vector2){ v1.x + 2, v1.y + 2 };
+    Vector2 sv2 = (Vector2){ v2.x + 2, v2.y + 2 };
+    Vector2 sv3 = (Vector2){ v3.x + 2, v3.y + 2 };
+    DrawTriangle(sv1, sv2, sv3, (Color){ 0, 0, 0, 50 });
+
+    DrawTriangle(v1, v2, v3, fill);
+    DrawTriangleLines(v1, v2, v3, border);
+
+    const char* txt = "Camera lenta";
+    DrawText(txt, cx - MeasureText(txt, 16)/2, cy + 50, 16, (Color){ 200, 220, 255, 180 });
+}
+
+// =========================================================================
 // INICIALIZAÇÃO
 // =========================================================================
 void InitGame(void) {
@@ -506,6 +550,9 @@ void InitGame(void) {
 // =========================================================================
 void UpdateGame(void) {
     float dt = GetFrameTime();
+    UpdateSlowMotion();
+    dt = ApplyTimeScale(dt);
+
     uiPulse = sinf(GetTime() * UI_ANIM_SPEED) * 0.5f + 0.5f;
 
     if (comboDisplayTimer > 0.0f) {
@@ -1100,5 +1147,10 @@ void DrawGame(void) {
                 screenWidth/2 - MeasureText(TextFormat("COMBO x%d!", comboCount), 42)/2,
                 120 + floatOffset, 42,
                 (Color){255, (int)(200 + comboPulse * 55), 100, 255});
+    }
+
+    // Indicador de câmera lenta
+    if (slowMoActive) {
+        DrawSlowMotionIndicator();
     }
 }
