@@ -15,6 +15,9 @@ float CalculatePredictionAccuracy(void);
 void InitPredictionSystem(void);
 void ResetPredictionText(void);
 
+void DrawPredictionPanel(int totalBolas, int currentStage, int comboCount, int slotCounts[], int currentSlotIndex, int isBallActive, int slotIndex);
+void DrawPredictionChart(int totalBolas, int slotCounts[], int currentSlotIndex, float baseY);
+
 extern int mostProbableSlot;
 extern float highestProbability;
 extern float currentProbabilities[SLOT_COUNT];
