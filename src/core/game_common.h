@@ -13,38 +13,47 @@
 #define COLOR_PREDICTION   (Color){100, 255, 255, 120 }
 #define COLOR_PATH         (Color){255, 255, 100,  80 }
 
-// typedef struct {
-//     float x, y, vx, vy;
-//     int active;
-//     int slotIndex;
-//     Color color;
-//     float scale;
-//     float rotation;
-//     float rotationSpeed;
-// } Ball;
+#define GRAVITY 1200.0f
+#define AIR_RESISTANCE 0.995f
+#define FRICTION 0.88f
+#define ELASTICITY 0.75f
+#define BALL_RADIUS 15
+#define NUM_PINS_X 12
+#define NUM_PINS_Y 9
+#define PIN_SPACING 80
+#define PIN_RADIUS 7
+#define SLOT_COUNT (NUM_PINS_X + 1)
+#define NUM_ETAPAS 5
+#define PARTICLE_COUNT 80
+#define TRAIL_LENGTH 12
+#define UI_ANIM_SPEED 3.0f
+#define MAX_PREDICTION_PATHS 8 
 
-// typedef struct {
-//     float x, y;
-//     Color color;
-//     int visible;
-// } Pin;
+typedef struct {
+    float x, y, vx, vy;
+    int active;
+    int slotIndex;
+    Color color;
+    float scale;
+    float rotation;
+    float rotationSpeed;
+} Ball;
 
-// typedef struct {
-//     float x, y, vx, vy;
-//     float life, maxLife;
-//     Color color;
-//     float size;
-// } Particle;
+typedef struct {
+    float x, y;
+    Color color;
+    int visible;
+} Pin;
+
+typedef struct {
+    float x, y, vx, vy;
+    float life, maxLife;
+    Color color;
+    float size;
+} Particle;
 
 // // Funções utilitárias
 // float MathLerp(float a, float b, float t);
 float RandomFloat(float min, float max);
 // long long factorial(int n);
 // long long combinations(int n, int k);
-
-// // Constantes físicas comuns
-// #define GRAVITY 1200.0f
-// #define AIR_RESISTANCE 0.995f
-// #define FRICTION 0.88f
-// #define ELASTICITY 0.75f
-// #define BALL_RADIUS 15

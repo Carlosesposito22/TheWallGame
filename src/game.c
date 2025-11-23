@@ -9,56 +9,8 @@
 #include "core/game_common.h"
 
 // =========================================================================
-// CONSTANTES E DEFINIÇÕES APRIMORADAS
-// =========================================================================
-#define NUM_PINS_X 12
-#define NUM_PINS_Y 9
-#define PIN_SPACING 80
-#define PIN_RADIUS 7
-#define BALL_RADIUS 15
-#define GRAVITY 1200.0f
-#define AIR_RESISTANCE 0.995f
-#define FRICTION 0.88f
-#define ELASTICITY 0.75f
-#define SLOT_COUNT (NUM_PINS_X + 1)
-#define NUM_ETAPAS 5
-#define PARTICLE_COUNT 80
-#define TRAIL_LENGTH 12
-#define UI_ANIM_SPEED 3.0f
-#define MAX_PREDICTION_PATHS 8 
-
-
-static const int gameAreaHeight = 800;
-
-// =========================================================================
 // STRUCTS E ENUMS
 // =========================================================================
-typedef struct {
-    float x, y;
-    float vx, vy;
-    int active;
-    int slotIndex;
-    Color color;
-    float scale;
-    float rotation;
-    float rotationSpeed;
-} Ball;
-
-typedef struct {
-    float x, y;
-    Color color;
-    int visible;
-} Pin;
-
-typedef struct {
-    float x, y;
-    float vx, vy;
-    float life;
-    float maxLife;
-    Color color;
-    float size;
-} Particle;
-
 typedef struct {
     float x, y;
     float alpha;
@@ -101,7 +53,7 @@ static float slotWidth;
 static float baseY;
 static char playerName[MAX_NAME_LENGTH + 1] = { 0 };
 static int letterCount = 0;
-
+static const int gameAreaHeight = 800;
 
 static Pergunta perguntas[NUM_ETAPAS] = {
     { "Qual a capital da Franca?",
