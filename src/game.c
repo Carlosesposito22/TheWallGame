@@ -1,87 +1,15 @@
 #include "game.h"
-#include "commons.h"
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include "ranking.h"
-
-// =========================================================================
-// CONSTANTES E DEFINIÇÕES APRIMORADAS
-// =========================================================================
-#define NUM_PINS_X 12
-#define NUM_PINS_Y 9
-#define PIN_SPACING 80
-#define PIN_RADIUS 7
-#define BALL_RADIUS 15
-#define GRAVITY 1200.0f
-#define AIR_RESISTANCE 0.995f
-#define FRICTION 0.88f
-#define ELASTICITY 0.75f
-#define SLOT_COUNT (NUM_PINS_X + 1)
-#define NUM_ETAPAS 5
-#define PARTICLE_COUNT 80
-#define TRAIL_LENGTH 12
-#define SHAKE_DURATION 0.4f
-#define UI_ANIM_SPEED 3.0f
-#define MAX_PREDICTION_PATHS 8 
-
-static const Color COLOR_BG = { 8, 12, 32, 255 };
-static const Color COLOR_NEON_BLUE = { 0, 200, 255, 255 };
-static const Color COLOR_NEON_GOLD = { 255, 215, 0, 255 };
-static const Color COLOR_NEON_PURPLE = { 180, 70, 255, 255 };
-static const Color COLOR_NEON_GREEN = { 50, 255, 150, 255 };
-static const Color COLOR_NEON_RED = { 255, 50, 100, 255 };
-static const Color COLOR_UI_BG = { 20, 25, 45, 220 };
-static const Color COLOR_UI_BORDER = { 70, 130, 230, 255 };
-static const Color COLOR_PREDICTION = { 100, 255, 255, 120 };
-static const Color COLOR_PATH = { 255, 255, 100, 80 };
-
-static const int screenWidth = SCREEN_WIDTH;
-static const int screenHeight = SCREEN_HEIGHT;
-static const int gameAreaHeight = 800;
-
-// =========================================================================
-// STRUCTS E ENUMS
-// =========================================================================
-typedef struct {
-    float x, y;
-    float vx, vy;
-    int active;
-    int slotIndex;
-    Color color;
-    float scale;
-    float rotation;
-    float rotationSpeed;
-} Ball;
-
-typedef struct {
-    float x, y;
-    Color color;
-    int visible;
-} Pin;
-
-typedef struct {
-    float x, y;
-    float vx, vy;
-    float life;
-    float maxLife;
-    Color color;
-    float size;
-} Particle;
-
-typedef struct {
-    float x, y;
-    float alpha;
-    float scale;
-} TrailPoint;
-
-typedef struct {
-    Vector2 start;
-    Vector2 end;
-    float alpha;
-    float probability;
-} PredictionPath;
+#include "commons.h"
+#include "core/effects.h"
+#include "core/game_common.h"
+#include "core/physics.h"
+#include "core/particles.h"
+#include "core/prediction.h"
 
 typedef enum {
     STATE_START_SCREEN,
@@ -100,9 +28,6 @@ typedef struct {
     Color corTema;
 } Pergunta;
 
-// =========================================================================
-// VARIÁVEIS GLOBAIS
-// =========================================================================
 static Pin pins[NUM_PINS_X * NUM_PINS_Y];
 static int pinCount = 0;
 static int slotValues[SLOT_COUNT];
@@ -112,8 +37,19 @@ static float slotWidth;
 static float baseY;
 static char playerName[MAX_NAME_LENGTH + 1] = { 0 };
 static int letterCount = 0;
-static int slowMoActive = 0;
-static float slowMoFactor = 0.20f;
+static const int gameAreaHeight = 800;
+static InternalGameState currentState;
+static int slotCounts[SLOT_COUNT];
+static int totalBolas;
+static Ball ball;
+static int currentStage;
+static long long totalScore;
+static int lastAnswerWasCorrect;
+static int lastValue;
+static Color slotColor;
+static float uiPulse = 0.0f;
+static int comboCount = 0;
+static float comboDisplayTimer = 0.0f;
 
 static Pergunta perguntas[NUM_ETAPAS] = {
     { "Qual a capital da Franca?",
@@ -128,350 +64,8 @@ static Pergunta perguntas[NUM_ETAPAS] = {
       {"1. 1969", "2. 1975", "3. 1982"}, 0, COLOR_NEON_RED }
 };
 
-static InternalGameState currentState;
-static int slotCounts[SLOT_COUNT];
-static int totalBolas;
-static Ball ball;
-static TrailPoint ballTrail[TRAIL_LENGTH];
-static int trailIndex = 0;
-static int currentStage;
-static long long totalScore;
-static int lastAnswerWasCorrect;
-static int lastValue;
-static Color slotColor;
-static Particle particles[PARTICLE_COUNT];
-static float shakeTimer = 0.0f;
-static float shakeIntensity = 0.0f;
-static float cameraOffsetX = 0.0f;
-static float cameraOffsetY = 0.0f;
-static float uiPulse = 0.0f;
-static int comboCount = 0;
-static float comboDisplayTimer = 0.0f;
-
-// Variáveis para análise preditiva
-static PredictionPath predictionPaths[MAX_PREDICTION_PATHS];
-static float currentProbabilities[SLOT_COUNT];
-static char analysisText[3][64];
-static float uncertaintyLevel = 1.0f;
-static int pinsRemaining = NUM_PINS_Y;
-static int mostProbableSlot = -1;
-static float highestProbability = 0.0f;
-
 extern GameScreen currentScreen;
 
-// =========================================================================
-// FUNÇÕES MATEMÁTICAS E AUXILIARES
-// =========================================================================
-long long factorial(int n) {
-    if (n < 0) return 0;
-    long long f = 1;
-    for (int i = 2; i <= n; i++) f *= i;
-    return f;
-}
-
-long long combinations(int n, int k) {
-    if (k < 0 || k > n) return 0;
-    long long denom = factorial(k) * factorial(n - k);
-    return denom ? factorial(n) / denom : 0;
-}
-
-float MathLerp(float a, float b, float t) {
-    return a + t * (b - a);
-}
-
-float RandomFloat(float min, float max) {
-    return min + ((float)rand() / RAND_MAX) * (max - min);
-}
-
-// Função auxiliar para calcular precisão da análise preditiva
-float CalculatePredictionAccuracy(void) {
-    return 75.0f + (float)(rand() % 20); // Simula 75-95% de precisão
-}
-
-// =========================================================================
-// SISTEMA DE ANÁLISE PREDITIVA
-// =========================================================================
-
-void CalculateRealTimeProbabilities(float ballX, float ballY) {
-    // Calcula quantos pinos faltam baseado na posição Y da bola
-    float progress = (ballY - firstPinY) / ((baseY - BALL_RADIUS) - firstPinY);
-    progress = fmaxf(0.0f, fminf(1.0f, progress));
-    pinsRemaining = (int)((1.0f - progress) * NUM_PINS_Y);
-    pinsRemaining = fmax(1, pinsRemaining); // Mínimo 1 pino restante
-
-    // Calcula o slot central baseado na posição X atual
-    int centerSlot = (int)((ballX - firstSlotX) / slotWidth);
-    centerSlot = fmax(0, fmin(SLOT_COUNT - 1, centerSlot));
-
-    // Calcula probabilidades para cada slot
-    highestProbability = 0.0f;
-    mostProbableSlot = -1;
-
-    for (int targetSlot = 0; targetSlot < SLOT_COUNT; targetSlot++) {
-        // Distância do slot alvo ao slot central
-        int distance = abs(targetSlot - centerSlot);
-
-        // Se a distância for maior que os pinos restantes, probabilidade é zero
-        if (distance > pinsRemaining) {
-            currentProbabilities[targetSlot] = 0.0f;
-            continue;
-        }
-
-        // Calcula probabilidade binomial
-        double prob = (double)combinations(pinsRemaining, distance) * pow(0.5, pinsRemaining);
-        currentProbabilities[targetSlot] = (float)prob;
-
-        // Atualiza slot mais provável
-        if (prob > highestProbability) {
-            highestProbability = (float)prob;
-            mostProbableSlot = targetSlot;
-        }
-    }
-
-    // Calcula nível de incerteza (entropia)
-    uncertaintyLevel = 0.0f;
-    for (int i = 0; i < SLOT_COUNT; i++) {
-        if (currentProbabilities[i] > 0.0f) {
-            uncertaintyLevel -= currentProbabilities[i] * log2f(currentProbabilities[i]);
-        }
-    }
-    uncertaintyLevel /= log2f(SLOT_COUNT); // Normaliza para 0-1
-
-    // Atualiza textos de análise
-    if (pinsRemaining == NUM_PINS_Y) {
-        snprintf(analysisText[0], sizeof(analysisText[0]), "Incerteza Máxima (50/50)");
-        snprintf(analysisText[1], sizeof(analysisText[1]), "Todos os caminhos possíveis");
-        snprintf(analysisText[2], sizeof(analysisText[2]), "Distribuição Uniforme");
-    } else if (pinsRemaining > NUM_PINS_Y / 2) {
-        snprintf(analysisText[0], sizeof(analysisText[0]), "Alta Incerteza");
-        snprintf(analysisText[1], sizeof(analysisText[1]), "Múltiplos caminhos prováveis");
-        snprintf(analysisText[2], sizeof(analysisText[2]), "Convergindo gradualmente");
-    } else if (pinsRemaining > 2) {
-        snprintf(analysisText[0], sizeof(analysisText[0]), "Incerteza Moderada");
-        snprintf(analysisText[1], sizeof(analysisText[1]), "Focando no slot %d", mostProbableSlot + 1);
-        snprintf(analysisText[2], sizeof(analysisText[2]), "Curva se estreitando");
-    } else {
-        snprintf(analysisText[0], sizeof(analysisText[0]), "Baixa Incerteza");
-        snprintf(analysisText[1], sizeof(analysisText[1]), "Destino quase definido");
-        snprintf(analysisText[2], sizeof(analysisText[2]), "Slot %d (%.1f%%)",
-                 mostProbableSlot + 1, highestProbability * 100);
-    }
-}
-
-void UpdatePredictionPaths(float ballX, float ballY) {
-    // Limpa caminhos antigos
-    for (int i = 0; i < MAX_PREDICTION_PATHS; i++) {
-        predictionPaths[i].alpha = MathLerp(predictionPaths[i].alpha, 0.0f, 0.3f);
-    }
-
-    // Cria novos caminhos para slots com probabilidade significativa
-    int pathIndex = 0;
-    for (int slot = 0; slot < SLOT_COUNT && pathIndex < MAX_PREDICTION_PATHS; slot++) {
-        if (currentProbabilities[slot] > 0.05f) { // Apenas slots com >5% de chance
-            float slotCenterX = firstSlotX + slot * slotWidth + slotWidth / 2;
-
-            predictionPaths[pathIndex].start = (Vector2){ ballX, ballY };
-            predictionPaths[pathIndex].end = (Vector2){ slotCenterX, baseY - BALL_RADIUS };
-            predictionPaths[pathIndex].alpha = currentProbabilities[slot] * 0.8f;
-            predictionPaths[pathIndex].probability = currentProbabilities[slot];
-
-            pathIndex++;
-        }
-    }
-}
-
-void DrawPredictionCurve(void) {
-    if (pinsRemaining <= 0) return;
-
-    // Desenha curva de probabilidade preditiva
-    int pointCount = 50;
-    Vector2 points[pointCount];
-    float maxProb = 0.0f;
-
-    // Encontra probabilidade máxima para escalar o gráfico
-    for (int i = 0; i < SLOT_COUNT; i++) {
-        if (currentProbabilities[i] > maxProb) {
-            maxProb = currentProbabilities[i];
-        }
-    }
-
-    if (maxProb <= 0.0f) return;
-
-    // Cria pontos suaves para a curva
-    for (int i = 0; i < pointCount; i++) {
-        float t = (float)i / (pointCount - 1);
-        int slot = (int)(t * (SLOT_COUNT - 1));
-        float x = firstSlotX + slot * slotWidth + slotWidth / 2;
-        float y = baseY - (currentProbabilities[slot] / maxProb) * 150.0f; // Altura escalada
-
-        points[i] = (Vector2){ x, y };
-    }
-
-    // Desenha a curva suave
-    for (int i = 0; i < pointCount - 1; i++) {
-        float alpha = 150.0f * (0.3f + 0.7f * uncertaintyLevel);
-        Color curveColor = (Color){
-            COLOR_PREDICTION.r,
-            COLOR_PREDICTION.g,
-            COLOR_PREDICTION.b,
-            (unsigned char)alpha
-        };
-        DrawLineEx(points[i], points[i + 1], 3.0f, curveColor);
-    }
-
-    // Desenha área sob a curva
-    for (int i = 0; i < pointCount - 1; i++) {
-        Vector2 quad[4] = {
-            points[i],
-            points[i + 1],
-            {points[i + 1].x, baseY},
-            {points[i].x, baseY}
-        };
-        Color fillColor = (Color){
-            COLOR_PREDICTION.r,
-            COLOR_PREDICTION.g,
-            COLOR_PREDICTION.b,
-            30
-        };
-        DrawTriangle(quad[0], quad[1], quad[2], fillColor);
-        DrawTriangle(quad[0], quad[2], quad[3], fillColor);
-    }
-}
-
-void DrawPredictionPaths(void) {
-    for (int i = 0; i < MAX_PREDICTION_PATHS; i++) {
-        if (predictionPaths[i].alpha > 0.01f) {
-            Color pathColor = COLOR_PATH;
-            pathColor.a = (unsigned char)(predictionPaths[i].alpha * 255);
-
-            // Linha principal
-            DrawLineEx(predictionPaths[i].start, predictionPaths[i].end,
-                      2.0f * predictionPaths[i].probability, pathColor);
-
-            // Ponto de destino pulsante
-            float pulse = sinf(GetTime() * 4.0f) * 0.3f + 0.7f;
-            DrawCircleV(predictionPaths[i].end,
-                      6.0f * predictionPaths[i].probability * pulse,
-                      pathColor);
-        }
-    }
-}
-
-// =========================================================================
-// SISTEMA DE PARTÍCULAS E TRAIL
-// =========================================================================
-void InitParticles(void) {
-    for (int i = 0; i < PARTICLE_COUNT; i++) {
-        particles[i].life = 0.0f;
-    }
-}
-
-void CreateParticles(float x, float y, Color color, int count) {
-    for (int i = 0; i < PARTICLE_COUNT && count > 0; i++) {
-        if (particles[i].life <= 0.0f) {
-            particles[i].x = x;
-            particles[i].y = y;
-            particles[i].vx = RandomFloat(-400, 400);
-            particles[i].vy = RandomFloat(-400, 400);
-            particles[i].life = particles[i].maxLife = RandomFloat(0.3f, 1.0f);
-            particles[i].color = color;
-            particles[i].size = RandomFloat(2, 6);
-            count--;
-        }
-    }
-}
-
-void UpdateParticles(float dt) {
-    for (int i = 0; i < PARTICLE_COUNT; i++) {
-        if (particles[i].life > 0.0f) {
-            particles[i].x += particles[i].vx * dt;
-            particles[i].y += particles[i].vy * dt;
-            particles[i].vy += GRAVITY * 0.3f * dt;
-            particles[i].life -= dt;
-            particles[i].color.a = (unsigned char)(255 * (particles[i].life / particles[i].maxLife));
-        }
-    }
-}
-
-void UpdateBallTrail(float ballX, float ballY, float dt) {
-    for (int i = 0; i < TRAIL_LENGTH; i++) {
-        ballTrail[i].alpha = MathLerp(ballTrail[i].alpha, 0.0f, 8.0f * dt);
-        ballTrail[i].scale = MathLerp(ballTrail[i].scale, 0.3f, 6.0f * dt);
-    }
-
-    ballTrail[trailIndex].x = ballX;
-    ballTrail[trailIndex].y = ballY;
-    ballTrail[trailIndex].alpha = 1.0f;
-    ballTrail[trailIndex].scale = 1.0f;
-
-    trailIndex = (trailIndex + 1) % TRAIL_LENGTH;
-}
-
-// =========================================================================
-// EFEITOS VISUAIS
-// =========================================================================
-void StartScreenShake(float intensity) {
-    shakeTimer = SHAKE_DURATION;
-    shakeIntensity = intensity;
-}
-
-void UpdateScreenShake(float dt) {
-    if (shakeTimer > 0.0f) {
-        shakeTimer -= dt;
-        cameraOffsetX = RandomFloat(-shakeIntensity, shakeIntensity) * (shakeTimer / SHAKE_DURATION);
-        cameraOffsetY = RandomFloat(-shakeIntensity, shakeIntensity) * (shakeTimer / SHAKE_DURATION);
-    } else {
-        cameraOffsetX = 0.0f;
-        cameraOffsetY = 0.0f;
-    }
-}
-
-// =========================================================================
-// CÂMERA LENTA (SLOW MOTION)
-// =========================================================================
-void UpdateSlowMotion(void) {
-    slowMoActive = IsKeyDown(KEY_S);
-}
-
-float ApplyTimeScale(float dt) {
-    return slowMoActive ? (dt * slowMoFactor) : dt;
-}
-
-void DrawSlowMotionIndicator(void) {
-    float pulse = sinf(GetTime() * 7.0f) * 0.5f + 0.5f;
-    unsigned char alpha = (unsigned char)(80 + 120 * pulse);
-
-    int cx = screenWidth / 2;
-    int cy = screenHeight / 2;
-
-    float size = 26.0f;      
-    float width = size * 1.4f; 
-
-    Vector2 v1 = (Vector2){ cx - width, cy };        
-    Vector2 v2 = (Vector2){ cx + width * 0.6f, cy - size };
-    Vector2 v3 = (Vector2){ cx + width * 0.6f, cy + size };
-
-    Color fill = (Color){ COLOR_NEON_BLUE.r, COLOR_NEON_BLUE.g, COLOR_NEON_BLUE.b, alpha };
-    Color border = (Color){ COLOR_NEON_GOLD.r, COLOR_NEON_GOLD.g, COLOR_NEON_GOLD.b, (unsigned char)(180 * (0.6f + 0.4f * pulse)) };
-
-    Color glow = (Color){ COLOR_NEON_BLUE.r, COLOR_NEON_BLUE.g, COLOR_NEON_BLUE.b, (unsigned char)(50 + 60 * pulse) };
-    DrawCircle(cx, cy, 60, glow);
-
-    Vector2 sv1 = (Vector2){ v1.x + 2, v1.y + 2 };
-    Vector2 sv2 = (Vector2){ v2.x + 2, v2.y + 2 };
-    Vector2 sv3 = (Vector2){ v3.x + 2, v3.y + 2 };
-    DrawTriangle(sv1, sv2, sv3, (Color){ 0, 0, 0, 50 });
-
-    DrawTriangle(v1, v2, v3, fill);
-    DrawTriangleLines(v1, v2, v3, border);
-
-    const char* txt = "Camera lenta";
-    DrawText(txt, cx - MeasureText(txt, 16)/2, cy + 50, 16, (Color){ 200, 220, 255, 180 });
-}
-
-// =========================================================================
-// INICIALIZAÇÃO
-// =========================================================================
 void InitGame(void) {
     currentState = STATE_START_SCREEN;
     currentStage = 0;
@@ -485,23 +79,11 @@ void InitGame(void) {
     comboDisplayTimer = 0.0f;
     memset(playerName, 0, sizeof(playerName));
 
-    // Inicializa sistema preditivo
-    for (int i = 0; i < SLOT_COUNT; i++) {
-        slotCounts[i] = 0;
-        currentProbabilities[i] = 0.0f;
-    }
-
-    for (int i = 0; i < MAX_PREDICTION_PATHS; i++) {
-        predictionPaths[i].alpha = 0.0f;
-    }
-
-    strcpy(analysisText[0], "Aguardando início...");
-    strcpy(analysisText[1], "Preparando análise...");
-    strcpy(analysisText[2], "Sistema pronto");
+    InitPredictionSystem();
 
     // Inicializa bola
     ball.active = 0;
-    ball.x = screenWidth * 0.5f;
+    ball.x = SCREEN_WIDTH * 0.5f;
     ball.y = 60;
     ball.vx = 0;
     ball.vy = 0;
@@ -510,12 +92,6 @@ void InitGame(void) {
     ball.rotation = 0.0f;
     ball.rotationSpeed = 0.0f;
 
-    // Inicializa trail
-    for (int i = 0; i < TRAIL_LENGTH; i++) {
-        ballTrail[i].alpha = 0.0f;
-        ballTrail[i].scale = 0.3f;
-    }
-
     // Configura pinos
     pinCount = 0;
     float totalBoardWidth = NUM_PINS_X * PIN_SPACING;
@@ -523,7 +99,7 @@ void InitGame(void) {
     for (int y = 0; y < NUM_PINS_Y; y++) {
         for (int x = 0; x < NUM_PINS_X; x++) {
             float offset = (y % 2 == 0) ? 0 : PIN_SPACING * 0.5f;
-            pins[pinCount].x = screenWidth * 0.5f - totalBoardWidth * 0.5f + offset + x * PIN_SPACING;
+            pins[pinCount].x = SCREEN_WIDTH * 0.5f - totalBoardWidth * 0.5f + offset + x * PIN_SPACING;
             pins[pinCount].y = firstPinY + y * PIN_SPACING;
             pins[pinCount].color = (Color){180, 180, 200, 255};
             pins[pinCount].visible = 1;
@@ -535,7 +111,7 @@ void InitGame(void) {
     slotWidth = PIN_SPACING;
     baseY = 750;
     float totalSlotsWidth = SLOT_COUNT * slotWidth;
-    firstSlotX = (screenWidth - totalSlotsWidth) * 0.5f;
+    firstSlotX = (SCREEN_WIDTH - totalSlotsWidth) * 0.5f;
 
     int valoresBase[SLOT_COUNT] = {1, 10, 1000, 100, 500, 100, 1000, 100, 500, 100, 1000, 10, 1};
     for (int i = 0; i < SLOT_COUNT; i++) {
@@ -545,9 +121,6 @@ void InitGame(void) {
     InitParticles();
 }
 
-// =========================================================================
-// UPDATE COM ANÁLISE PREDITIVA
-// =========================================================================
 void UpdateGame(void) {
     float dt = GetFrameTime();
     UpdateSlowMotion();
@@ -586,7 +159,7 @@ void UpdateGame(void) {
                     comboCount++;
                     if (comboCount > 1) {
                         comboDisplayTimer = 2.0f;
-                        CreateParticles(screenWidth * 0.5f, 150, COLOR_NEON_GOLD, 20);
+                        CreateParticles(SCREEN_WIDTH * 0.5f, 150, COLOR_NEON_GOLD, 20);
                     }
                     StartScreenShake(3.0f);
                 } else {
@@ -600,15 +173,10 @@ void UpdateGame(void) {
         } break;
 
         case STATE_WAITING_FOR_BALL: {
-            // Reseta análise preditiva
-            pinsRemaining = NUM_PINS_Y;
-            uncertaintyLevel = 1.0f;
-            strcpy(analysisText[0], "Pronto para análise");
-            strcpy(analysisText[1], "Aguardando lançamento");
-            strcpy(analysisText[2], "Incerteza máxima");
+            ResetPredictionText();
 
             if ((IsKeyPressed(KEY_SPACE) || IsGestureDetected(GESTURE_TAP)) && !ball.active) {
-                ball.x = screenWidth * 0.5f;
+                ball.x = SCREEN_WIDTH * 0.5f;
                 ball.y = 60;
                 ball.vx = RandomFloat(-100, 100);
                 ball.vy = 0;
@@ -629,75 +197,7 @@ void UpdateGame(void) {
                 CalculateRealTimeProbabilities(ball.x, ball.y);
                 UpdatePredictionPaths(ball.x, ball.y);
 
-                ball.vy += GRAVITY * dt;
-                ball.vx *= AIR_RESISTANCE;
-                ball.vy *= AIR_RESISTANCE;
-                ball.rotationSpeed = MathLerp(ball.rotationSpeed, ball.vx * 0.015f, 5.0f * dt);
-
-                ball.x += ball.vx * dt;
-                ball.y += ball.vy * dt;
-                ball.rotation += ball.rotationSpeed;
-                ball.scale = MathLerp(ball.scale, 1.0f, 8.0f * dt);
-
-                // Colisão com pinos
-                for (int i = 0; i < pinCount; i++) {
-                    if (!pins[i].visible) continue;
-
-                    float dx = ball.x - pins[i].x;
-                    float dy = ball.y - pins[i].y;
-                    float dist = sqrtf(dx*dx + dy*dy);
-                    float minDist = BALL_RADIUS + PIN_RADIUS;
-
-                    if (dist < minDist) {
-                        float nx = dx / dist;
-                        float ny = dy / dist;
-
-                        float penetration = minDist - dist;
-                        ball.x += nx * penetration * 0.5f;
-                        ball.y += ny * penetration * 0.5f;
-
-                        float dotProduct = ball.vx * nx + ball.vy * ny;
-                        ball.vx = (ball.vx - 2.0f * dotProduct * nx) * ELASTICITY;
-                        ball.vy = (ball.vy - 2.0f * dotProduct * ny) * ELASTICITY;
-
-                        pins[i].color = YELLOW;
-                        CreateParticles(pins[i].x, pins[i].y, YELLOW, 8);
-                        ball.rotationSpeed += ball.vx * 0.03f;
-                    }
-                }
-
-                // Colisão com paredes
-                if (ball.x < BALL_RADIUS) {
-                    ball.x = BALL_RADIUS;
-                    ball.vx = fabsf(ball.vx) * FRICTION;
-                    CreateParticles(ball.x, ball.y, COLOR_NEON_BLUE, 5);
-                }
-                if (ball.x > screenWidth - BALL_RADIUS) {
-                    ball.x = screenWidth - BALL_RADIUS;
-                    ball.vx = -fabsf(ball.vx) * FRICTION;
-                    CreateParticles(ball.x, ball.y, COLOR_NEON_BLUE, 5);
-                }
-
-                // Aterrissagem nos slots
-                if (ball.y > baseY - BALL_RADIUS) {
-                    ball.y = baseY - BALL_RADIUS;
-                    int idx = (int)((ball.x - firstSlotX) / slotWidth);
-                    idx = (idx < 0) ? 0 : (idx >= SLOT_COUNT) ? SLOT_COUNT - 1 : idx;
-
-                    ball.slotIndex = idx;
-                    ball.active = 0;
-
-                    slotCounts[idx]++;
-                    totalBolas++;
-
-                    lastValue = slotValues[ball.slotIndex];
-                    int pointsChange = lastAnswerWasCorrect ? lastValue : -lastValue;
-                    totalScore += pointsChange;
-
-                    Color particleColor = lastAnswerWasCorrect ? COLOR_NEON_GREEN : COLOR_NEON_RED;
-                    CreateParticles(ball.x, ball.y, particleColor, 15);
-                    StartScreenShake(lastAnswerWasCorrect ? 5.0f : 10.0f);
-
+                if (UpdateBallPhysics(&ball,pins, pinCount,baseY, firstSlotX, slotWidth,slotCounts, &totalBolas,slotValues, &totalScore,lastAnswerWasCorrect,dt)) {
                     currentState = STATE_BALL_LANDED;
                 }
             }
@@ -745,26 +245,23 @@ void UpdateGame(void) {
     }
 }
 
-// =========================================================================
-// RENDERIZAÇÃO COM ANÁLISE PREDITIVA
-// =========================================================================
 void DrawGame(void) {
     BeginMode2D((Camera2D){
-        { cameraOffsetX, cameraOffsetY },
+        { GetCameraOffsetX(), GetCameraOffsetY() },
         { 0, 0 },
         0.0f, 1.0f
     });
 
     // Fundo gradiente moderno
-    for (int i = 0; i < screenHeight; i++) {
-        float t = (float)i / screenHeight;
+    for (int i = 0; i < SCREEN_HEIGHT; i++) {
+        float t = (float)i / SCREEN_HEIGHT;
         Color gradColor = (Color){
             COLOR_BG.r + (int)(t * 8),
             COLOR_BG.g + (int)(t * 12),
             COLOR_BG.b + (int)(t * 18),
             255
         };
-        DrawRectangle(0, i, screenWidth, 1, gradColor);
+        DrawRectangle(0, i, SCREEN_WIDTH, 1, gradColor);
     }
 
     // Desenha pinos
@@ -777,7 +274,7 @@ void DrawGame(void) {
     }
 
     // Área de slots
-    DrawRectangleGradientV(0, baseY, screenWidth, gameAreaHeight - baseY,
+    DrawRectangleGradientV(0, baseY, SCREEN_WIDTH, gameAreaHeight - baseY,
                           (Color){40, 45, 70, 255}, (Color){25, 30, 50, 255});
 
     for (int i = 0; i < SLOT_COUNT; i++) {
@@ -801,22 +298,7 @@ void DrawGame(void) {
         DrawPredictionCurve();
     }
 
-    // Desenha trail da bola
-    for (int i = 0; i < TRAIL_LENGTH; i++) {
-        if (ballTrail[i].alpha > 0.01f) {
-            Color trailColor = ball.color;
-            trailColor.a = (unsigned char)(150 * ballTrail[i].alpha);
-            DrawCircle((int)ballTrail[i].x, (int)ballTrail[i].y,
-                      BALL_RADIUS * 0.7f * ballTrail[i].scale, trailColor);
-        }
-    }
-
-    // Desenha partículas
-    for (int i = 0; i < PARTICLE_COUNT; i++) {
-        if (particles[i].life > 0.0f) {
-            DrawCircle((int)particles[i].x, (int)particles[i].y, particles[i].size, particles[i].color);
-        }
-    }
+    DrawParticles();
 
     // Desenha bola
     if (ball.active) {
@@ -833,131 +315,9 @@ void DrawGame(void) {
 
     EndMode2D();
 
-    // =========================================================================
-    // HUB DE ANÁLISE ESTATÍSTICA (Lateral Direita) - SEM GRÁFICO
-    // =========================================================================
-
-    int statsPanelWidth = 400;
-    int statsPanelX = screenWidth - statsPanelWidth - 20;
-
-    // Painel principal de análise (mais compacto sem o gráfico)
-    DrawRectangle(statsPanelX, 20, statsPanelWidth, 300, COLOR_UI_BG);
-    DrawRectangleLines(statsPanelX, 20, statsPanelWidth, 300, COLOR_UI_BORDER);
-
-    // Header do painel com ícone
-    DrawText("HUB DE ANÁLISE", statsPanelX + 15, 35, 22, COLOR_NEON_GOLD);
-
-    // Informações básicas
-    DrawText(TextFormat("Bolas: %d", totalBolas), statsPanelX + 20, 70, 18, LIGHTGRAY);
-    DrawText(TextFormat("Stage: %d/%d", currentStage + 1, NUM_ETAPAS), statsPanelX + 20, 95, 18, LIGHTGRAY);
-    DrawText(TextFormat("Combo: x%d", comboCount), statsPanelX + statsPanelWidth - 100, 95, 18, COLOR_NEON_GREEN);
-
-    // Barra de incerteza visual
-    int uncertaintyBarWidth = statsPanelWidth - 40;
-    DrawRectangle(statsPanelX + 20, 125, uncertaintyBarWidth, 12, (Color){50, 50, 70, 255});
-    DrawRectangle(statsPanelX + 20, 125, (int)(uncertaintyBarWidth * uncertaintyLevel), 12,
-                 (Color){255, (int)(255 * uncertaintyLevel), (int)(100 * (1.0f - uncertaintyLevel)), 255});
-    DrawText(TextFormat("Incerteza: %.0f%%", uncertaintyLevel * 100), statsPanelX + 20, 140, 14, LIGHTGRAY);
-
-    // Análise preditiva em tempo real
-    DrawText("ANÁLISE PREDITIVA:", statsPanelX + 20, 165, 16, COLOR_NEON_BLUE);
-
-    if (ball.active && ball.slotIndex == -1) {
-        // Textos dinâmicos de análise
-        DrawText(analysisText[0], statsPanelX + 25, 190, 16, WHITE);
-        DrawText(analysisText[1], statsPanelX + 25, 215, 14, LIGHTGRAY);
-        DrawText(analysisText[2], statsPanelX + 25, 235, 14, LIGHTGRAY);
-
-        // Slot mais provável
-        if (mostProbableSlot >= 0) {
-            DrawText(TextFormat("Mais provável: Slot %d (%.1f%%)",
-                               mostProbableSlot + 1, highestProbability * 100),
-                    statsPanelX + 25, 260, 14, COLOR_NEON_GREEN);
-        }
-
-        // Pinos restantes
-        DrawText(TextFormat("Pinos restantes: %d/%d", pinsRemaining, NUM_PINS_Y),
-                statsPanelX + 25, 285, 14, COLOR_NEON_PURPLE);
-    } else {
-        DrawText("Aguardando lançamento...", statsPanelX + 25, 190, 16, GRAY);
-        DrawText("A análise começará quando", statsPanelX + 25, 215, 14, GRAY);
-        DrawText("a bola for solta", statsPanelX + 25, 235, 14, GRAY);
-    }
-
-    // =========================================================================
-    // GRÁFICO DE DISTRIBUIÇÃO ABAIXO DOS SLOTS
-    // =========================================================================
-
-    int graphHeight = 150; // Altura reduzida para caber abaixo dos slots
-    int graphY = baseY + 50; // Posiciona abaixo da área de slots
-    int graphWidth = screenWidth - 40; // Largura quase total da tela
-    int graphX = 20;
-
-    // Fundo do gráfico
-    DrawRectangle(graphX, graphY, graphWidth, graphHeight, (Color){15, 20, 35, 220});
-    DrawRectangleLines(graphX, graphY, graphWidth, graphHeight, COLOR_UI_BORDER);
-
-    // Título do gráfico
-    DrawText("DISTRIBUIÇÃO EMPÍRICA - HISTÓRICO DE BOLAS",
-             graphX + 10, graphY + 5, 16, COLOR_NEON_GOLD);
-
-    // Desenha gráfico de barras empírico (histórico)
-    int maxCount = 0;
-    for (int i = 0; i < SLOT_COUNT; i++) {
-        if (slotCounts[i] > maxCount) maxCount = slotCounts[i];
-    }
-
-    float barWidth = (float)graphWidth / SLOT_COUNT;
-    for (int i = 0; i < SLOT_COUNT; i++) {
-        float x = graphX + i * barWidth;
-
-        // Fundo da barra (sempre visível)
-        DrawRectangle(x + 2, graphY + graphHeight - 20, barWidth - 4, 15, (Color){40, 40, 60, 255});
-
-        if (slotCounts[i] > 0) {
-            float barHeight = maxCount > 0 ? (float)slotCounts[i] / maxCount * (graphHeight - 50) : 0;
-
-            // Barra histórica (sólida) - cresce de baixo para cima
-            Color barColor = (i == ball.slotIndex && !ball.active) ? COLOR_NEON_GOLD : COLOR_NEON_BLUE;
-            DrawRectangle(x + 2, graphY + graphHeight - 20 - barHeight, barWidth - 4, barHeight, barColor);
-            DrawRectangleLines(x + 2, graphY + graphHeight - 20 - barHeight, barWidth - 4, barHeight, WHITE);
-
-            // Número da contagem no topo da barra
-            if (barHeight > 25) {
-                char countText[16];
-                sprintf(countText, "%d", slotCounts[i]);
-                int textWidth = MeasureText(countText, 12);
-                DrawText(countText,
-                        x + barWidth/2 - textWidth/2,
-                        graphY + graphHeight - 25 - barHeight, 12, WHITE);
-            }
-
-            // Porcentagem abaixo da barra
-            if (totalBolas > 0) {
-                float percentage = (float)slotCounts[i] / totalBolas * 100.0f;
-                char percentText[16];
-                sprintf(percentText, "%.1f%%", percentage);
-                int textWidth = MeasureText(percentText, 10);
-                DrawText(percentText,
-                        x + barWidth/2 - textWidth/2,
-                        graphY + graphHeight - 5, 10, LIGHTGRAY);
-            }
-        }
-
-        // Número do slot abaixo de cada barra
-        char slotText[8];
-        sprintf(slotText, "%d", i + 1);
-        int slotTextWidth = MeasureText(slotText, 12);
-        DrawText(slotText,
-                x + barWidth/2 - slotTextWidth/2,
-                graphY + graphHeight + 5, 12, WHITE);
-    }
-
-    // Legenda do gráfico
-    if (totalBolas > 0) {
-        DrawText(TextFormat("Total de bolas: %d | Distribuição atual baseada no histórico", totalBolas),
-                graphX + 10, graphY + graphHeight + 25, 12, LIGHTGRAY);
-    }
+    // Painéis e gráficos da análise preditiva
+    DrawPredictionPanel(totalBolas, currentStage, comboCount, slotCounts, ball.slotIndex, ball.active, ball.slotIndex);
+    DrawPredictionChart(totalBolas, slotCounts, ball.slotIndex, baseY);
 
     // Painel de pontuação superior esquerdo
     DrawRectangle(20, 20, 280, 100, COLOR_UI_BG);
@@ -970,70 +330,70 @@ void DrawGame(void) {
     // =========================================================================
     switch (currentState) {
         case STATE_START_SCREEN: {
-            DrawRectangle(0, 0, screenWidth, screenHeight, Fade(BLACK, 0.85f));
+            DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.85f));
 
             float titleGlow = sinf(GetTime() * 2.5f) * 0.4f + 0.6f;
-            DrawText("THE WALL", (screenWidth - MeasureText("THE WALL", 120)) / 2, 250, 120,
+            DrawText("THE WALL", (SCREEN_WIDTH - MeasureText("THE WALL", 120)) / 2, 250, 120,
                     (Color){COLOR_NEON_GOLD.r, COLOR_NEON_GOLD.g, COLOR_NEON_GOLD.b, (int)(255 * titleGlow)});
 
             DrawText("Simulador de Distribuição Binomial",
-                    (screenWidth - MeasureText("Simulador de Distribuição Binomial", 36)) / 2, 400, 36, RAYWHITE);
+                    (SCREEN_WIDTH - MeasureText("Simulador de Distribuição Binomial", 36)) / 2, 400, 36, RAYWHITE);
 
             // Destaque para o novo sistema
             DrawText("COM ANÁLISE PREDITIVA EM TEMPO REAL",
-                    (screenWidth - MeasureText("COM ANÁLISE PREDITIVA EM TEMPO REAL", 24)) / 2, 470, 24, COLOR_NEON_BLUE);
+                    (SCREEN_WIDTH - MeasureText("COM ANÁLISE PREDITIVA EM TEMPO REAL", 24)) / 2, 470, 24, COLOR_NEON_BLUE);
 
             if (((int)(GetTime() * 2) % 2) == 0) {
                 DrawText("Pressione ENTER para começar",
-                        (screenWidth - MeasureText("Pressione ENTER para começar", 28)) / 2, 550, 28, COLOR_NEON_GREEN);
+                        (SCREEN_WIDTH - MeasureText("Pressione ENTER para começar", 28)) / 2, 550, 28, COLOR_NEON_GREEN);
             }
 
             DrawText("Trabalho de Estatística - Probabilidade e Combinatória",
-                    (screenWidth - MeasureText("Trabalho de Estatística - Probabilidade e Combinatória", 20)) / 2,
-                    screenHeight - 80, 20, GRAY);
+                    (SCREEN_WIDTH - MeasureText("Trabalho de Estatística - Probabilidade e Combinatória", 20)) / 2,
+                    SCREEN_HEIGHT - 80, 20, GRAY);
         } break;
 
         case STATE_ASKING_QUESTION: {
             Color bgColor = perguntas[currentStage].corTema;
-            DrawRectangle(0, 0, screenWidth, screenHeight, Fade(bgColor, 0.15f));
+            DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(bgColor, 0.15f));
 
-            DrawRectangle(screenWidth * 0.1f, screenHeight * 0.2f, screenWidth * 0.8f, screenHeight * 0.5f, COLOR_UI_BG);
-            DrawRectangleLines(screenWidth * 0.1f, screenHeight * 0.2f, screenWidth * 0.8f, screenHeight * 0.5f, bgColor);
+            DrawRectangle(SCREEN_WIDTH * 0.1f, SCREEN_HEIGHT * 0.2f, SCREEN_WIDTH * 0.8f, SCREEN_HEIGHT * 0.5f, COLOR_UI_BG);
+            DrawRectangleLines(SCREEN_WIDTH * 0.1f, SCREEN_HEIGHT * 0.2f, SCREEN_WIDTH * 0.8f, SCREEN_HEIGHT * 0.5f, bgColor);
 
             Pergunta q = perguntas[currentStage];
 
-            DrawText("PERGUNTA:", (screenWidth - MeasureText("PERGUNTA:", 28)) / 2, screenHeight * 0.23f, 28, WHITE);
-            DrawText(q.texto, (screenWidth - MeasureText(q.texto, 26)) / 2, screenHeight * 0.32f, 26, RAYWHITE);
+            DrawText("PERGUNTA:", (SCREEN_WIDTH - MeasureText("PERGUNTA:", 28)) / 2, SCREEN_HEIGHT * 0.23f, 28, WHITE);
+            DrawText(q.texto, (SCREEN_WIDTH - MeasureText(q.texto, 26)) / 2, SCREEN_HEIGHT * 0.32f, 26, RAYWHITE);
 
             for (int i = 0; i < 3; i++) {
-                int yPos = screenHeight * 0.45f + i * 60;
-                DrawRectangle(screenWidth * 0.2f, yPos, screenWidth * 0.6f, 50, Fade(WHITE, 0.1f));
-                DrawRectangleLines(screenWidth * 0.2f, yPos, screenWidth * 0.6f, 50, GRAY);
-                DrawText(q.opcoes[i], screenWidth * 0.22f, yPos + 12, 22, RAYWHITE);
-                DrawText(TextFormat("[%d]", i + 1), screenWidth * 0.7f, yPos + 12, 22, YELLOW);
+                int yPos = SCREEN_HEIGHT * 0.45f + i * 60;
+                DrawRectangle(SCREEN_WIDTH * 0.2f, yPos, SCREEN_WIDTH * 0.6f, 50, Fade(WHITE, 0.1f));
+                DrawRectangleLines(SCREEN_WIDTH * 0.2f, yPos, SCREEN_WIDTH * 0.6f, 50, GRAY);
+                DrawText(q.opcoes[i], SCREEN_WIDTH * 0.22f, yPos + 12, 22, RAYWHITE);
+                DrawText(TextFormat("[%d]", i + 1), SCREEN_WIDTH * 0.7f, yPos + 12, 22, YELLOW);
             }
 
             DrawText("Use as teclas 1, 2 ou 3 para responder",
-                    (screenWidth - MeasureText("Use as teclas 1, 2 ou 3 para responder", 20)) / 2,
-                    screenHeight * 0.7f, 20, COLOR_NEON_GREEN);
+                    (SCREEN_WIDTH - MeasureText("Use as teclas 1, 2 ou 3 para responder", 20)) / 2,
+                    SCREEN_HEIGHT * 0.7f, 20, COLOR_NEON_GREEN);
         } break;
 
         case STATE_WAITING_FOR_BALL: {
-            DrawRectangle(0, 0, screenWidth, 220, Fade(BLACK, 0.8f));
+            DrawRectangle(0, 0, SCREEN_WIDTH, 220, Fade(BLACK, 0.8f));
 
             if (lastAnswerWasCorrect) {
-                DrawText("✓ RESPOSTA CORRETA!", (screenWidth - MeasureText("✓ RESPOSTA CORRETA!", 40)) / 2, 80, 40, COLOR_NEON_GREEN);
+                DrawText("✓ RESPOSTA CORRETA!", (SCREEN_WIDTH - MeasureText("✓ RESPOSTA CORRETA!", 40)) / 2, 80, 40, COLOR_NEON_GREEN);
                 DrawText("O valor da bola será SOMADO à sua pontuação",
-                        (screenWidth - MeasureText("O valor da bola será SOMADO à sua pontuação", 24)) / 2, 130, 24, LIME);
+                        (SCREEN_WIDTH - MeasureText("O valor da bola será SOMADO à sua pontuação", 24)) / 2, 130, 24, LIME);
             } else {
-                DrawText("✗ RESPOSTA INCORRETA", (screenWidth - MeasureText("✗ RESPOSTA INCORRETA", 40)) / 2, 80, 40, COLOR_NEON_RED);
+                DrawText("✗ RESPOSTA INCORRETA", (SCREEN_WIDTH - MeasureText("✗ RESPOSTA INCORRETA", 40)) / 2, 80, 40, COLOR_NEON_RED);
                 DrawText("O valor da bola será SUBTRAÍDO da sua pontuação",
-                        (screenWidth - MeasureText("O valor da bola será SUBTRAÍDO da sua pontuação", 24)) / 2, 130, 24, ORANGE);
+                        (SCREEN_WIDTH - MeasureText("O valor da bola será SUBTRAÍDO da sua pontuação", 24)) / 2, 130, 24, ORANGE);
             }
 
             float pulse = sinf(GetTime() * 4.0f) * 0.5f + 0.5f;
             DrawText("PRESSIONE ESPAÇO PARA SOLTAR A BOLA",
-                    (screenWidth - MeasureText("PRESSIONE ESPAÇO PARA SOLTAR A BOLA", 28)) / 2, 180, 28,
+                    (SCREEN_WIDTH - MeasureText("PRESSIONE ESPAÇO PARA SOLTAR A BOLA", 28)) / 2, 180, 28,
                     (Color){255, 255, 100, (int)(255 * pulse)});
         } break;
 
@@ -1043,7 +403,7 @@ void DrawGame(void) {
         } break;
 
         case STATE_BALL_LANDED: {
-            DrawRectangle(0, 0, screenWidth, 240, Fade(BLACK, 0.8f));
+            DrawRectangle(0, 0, SCREEN_WIDTH, 240, Fade(BLACK, 0.8f));
 
             char resultadoStr[100];
             Color resultadoCor;
@@ -1056,40 +416,40 @@ void DrawGame(void) {
                 resultadoCor = COLOR_NEON_RED;
             }
 
-            DrawText("RESULTADO:", (screenWidth - MeasureText("RESULTADO:", 32)) / 2, 60, 32, WHITE);
+            DrawText("RESULTADO:", (SCREEN_WIDTH - MeasureText("RESULTADO:", 32)) / 2, 60, 32, WHITE);
             DrawText(TextFormat("Bola caiu no slot: %d (Valor: %d)", ball.slotIndex + 1, lastValue),
-                    (screenWidth - MeasureText(TextFormat("Bola caiu no slot: %d (Valor: %d)", ball.slotIndex + 1, lastValue), 26)) / 2,
+                    (SCREEN_WIDTH - MeasureText(TextFormat("Bola caiu no slot: %d (Valor: %d)", ball.slotIndex + 1, lastValue), 26)) / 2,
                     110, 26, RAYWHITE);
-            DrawText(resultadoStr, (screenWidth - MeasureText(resultadoStr, 30)) / 2, 160, 30, resultadoCor);
+            DrawText(resultadoStr, (SCREEN_WIDTH - MeasureText(resultadoStr, 30)) / 2, 160, 30, resultadoCor);
 
             // Comparação com a previsão
             if (mostProbableSlot >= 0) {
                 char predictionText[64];
                 if (ball.slotIndex == mostProbableSlot) {
                     snprintf(predictionText, sizeof(predictionText), "Previsão CORRETA! (%.1f%%)", highestProbability * 100);
-                    DrawText(predictionText, (screenWidth - MeasureText(predictionText, 20)) / 2, 200, 20, COLOR_NEON_GREEN);
+                    DrawText(predictionText, (SCREEN_WIDTH - MeasureText(predictionText, 20)) / 2, 200, 20, COLOR_NEON_GREEN);
                 } else {
                     snprintf(predictionText, sizeof(predictionText), "Previsão: Slot %d (%.1f%%)", mostProbableSlot + 1, highestProbability * 100);
-                    DrawText(predictionText, (screenWidth - MeasureText(predictionText, 18)) / 2, 200, 18, COLOR_NEON_BLUE);
+                    DrawText(predictionText, (SCREEN_WIDTH - MeasureText(predictionText, 18)) / 2, 200, 18, COLOR_NEON_BLUE);
                 }
             }
 
             if (((int)(GetTime() * 2) % 2) == 0) {
                 if (currentStage < NUM_ETAPAS - 1) {
                     DrawText("Pressione ENTER para a próxima etapa...",
-                            (screenWidth - MeasureText("Pressione ENTER para a próxima etapa...", 22)) / 2, 230, 22, YELLOW);
+                            (SCREEN_WIDTH - MeasureText("Pressione ENTER para a próxima etapa...", 22)) / 2, 230, 22, YELLOW);
                 } else {
                     DrawText("Pressione ENTER para ver seu resultado...",
-                            (screenWidth - MeasureText("Pressione ENTER para ver seu resultado...", 22)) / 2, 230, 22, YELLOW);
+                            (SCREEN_WIDTH - MeasureText("Pressione ENTER para ver seu resultado...", 22)) / 2, 230, 22, YELLOW);
                 }
             }
         } break;
 
         case STATE_NAME_INPUT: {
-            DrawRectangle(0, 0, screenWidth, screenHeight, Fade((Color){10, 20, 40, 255}, 0.95f));
+            DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade((Color){10, 20, 40, 255}, 0.95f));
 
-            int centerX = screenWidth / 2;
-            int centerY = screenHeight / 2;
+            int centerX = SCREEN_WIDTH / 2;
+            int centerY = SCREEN_HEIGHT / 2;
 
             DrawText("FIM DE JOGO!", centerX - MeasureText("FIM DE JOGO!", 60)/2, centerY - 200, 60, COLOR_NEON_GOLD);
 
@@ -1125,13 +485,13 @@ void DrawGame(void) {
         } break;
 
         case STATE_GAME_OVER: {
-            DrawRectangle(0, 0, screenWidth, screenHeight, Fade(BLACK, 0.9f));
-            DrawText("FIM DE JOGO", (screenWidth - MeasureText("FIM DE JOGO", 80)) / 2, 150, 80, COLOR_NEON_GOLD);
+            DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.9f));
+            DrawText("FIM DE JOGO", (SCREEN_WIDTH - MeasureText("FIM DE JOGO", 80)) / 2, 150, 80, COLOR_NEON_GOLD);
             DrawText(TextFormat("Pontuação Final: %lld", totalScore),
-                    (screenWidth - MeasureText(TextFormat("Pontuação Final: %lld", totalScore), 40)) / 2, 250, 40, YELLOW);
+                    (SCREEN_WIDTH - MeasureText(TextFormat("Pontuação Final: %lld", totalScore), 40)) / 2, 250, 40, YELLOW);
 
-            DrawText("Pressione R para reiniciar", (screenWidth - MeasureText("Pressione R para reiniciar", 28)) / 2, 350, 28, RAYWHITE);
-            DrawText("Pressione Q para voltar ao menu", (screenWidth - MeasureText("Pressione Q para voltar ao menu", 28)) / 2, 390, 28, LIGHTGRAY);
+            DrawText("Pressione R para reiniciar", (SCREEN_WIDTH - MeasureText("Pressione R para reiniciar", 28)) / 2, 350, 28, RAYWHITE);
+            DrawText("Pressione Q para voltar ao menu", (SCREEN_WIDTH - MeasureText("Pressione Q para voltar ao menu", 28)) / 2, 390, 28, LIGHTGRAY);
         } break;
 
         default: {
@@ -1144,13 +504,13 @@ void DrawGame(void) {
         float comboPulse = sinf(GetTime() * 8.0f) * 0.5f + 0.5f;
         float floatOffset = sinf(GetTime() * 3.0f) * 8.0f;
         DrawText(TextFormat("COMBO x%d!", comboCount),
-                screenWidth/2 - MeasureText(TextFormat("COMBO x%d!", comboCount), 42)/2,
+                SCREEN_WIDTH/2 - MeasureText(TextFormat("COMBO x%d!", comboCount), 42)/2,
                 120 + floatOffset, 42,
                 (Color){255, (int)(200 + comboPulse * 55), 100, 255});
     }
 
     // Indicador de câmera lenta
-    if (slowMoActive) {
+    if (IsSlowMotionActive()) {
         DrawSlowMotionIndicator();
     }
 }
