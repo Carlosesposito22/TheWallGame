@@ -8,16 +8,11 @@
 #include "core/effects.h"
 #include "core/game_common.h"
 #include "core/physics.h"
+#include "core/particles.h"
 
 // =========================================================================
 // STRUCTS E ENUMS
 // =========================================================================
-typedef struct {
-    float x, y;
-    float alpha;
-    float scale;
-} TrailPoint;
-
 typedef struct {
     Vector2 start;
     Vector2 end;
@@ -73,14 +68,11 @@ static InternalGameState currentState;
 static int slotCounts[SLOT_COUNT];
 static int totalBolas;
 static Ball ball;
-static TrailPoint ballTrail[TRAIL_LENGTH];
-static int trailIndex = 0;
 static int currentStage;
 static long long totalScore;
 static int lastAnswerWasCorrect;
 static int lastValue;
 static Color slotColor;
-static Particle particles[PARTICLE_COUNT];
 
 static float uiPulse = 0.0f;
 static int comboCount = 0;
@@ -296,60 +288,6 @@ void DrawPredictionPaths(void) {
 }
 
 // =========================================================================
-// SISTEMA DE PARTÍCULAS E TRAIL
-// =========================================================================
-void InitParticles(void) {
-    for (int i = 0; i < PARTICLE_COUNT; i++) {
-        particles[i].life = 0.0f;
-    }
-}
-
-void CreateParticles(float x, float y, Color color, int count) {
-    for (int i = 0; i < PARTICLE_COUNT && count > 0; i++) {
-        if (particles[i].life <= 0.0f) {
-            particles[i].x = x;
-            particles[i].y = y;
-            particles[i].vx = RandomFloat(-400, 400);
-            particles[i].vy = RandomFloat(-400, 400);
-            particles[i].life = particles[i].maxLife = RandomFloat(0.3f, 1.0f);
-            particles[i].color = color;
-            particles[i].size = RandomFloat(2, 6);
-            count--;
-        }
-    }
-}
-
-void UpdateParticles(float dt) {
-    for (int i = 0; i < PARTICLE_COUNT; i++) {
-        if (particles[i].life > 0.0f) {
-            particles[i].x += particles[i].vx * dt;
-            particles[i].y += particles[i].vy * dt;
-            particles[i].vy += GRAVITY * 0.3f * dt;
-            particles[i].life -= dt;
-            particles[i].color.a = (unsigned char)(255 * (particles[i].life / particles[i].maxLife));
-        }
-    }
-}
-
-void UpdateBallTrail(float ballX, float ballY, float dt) {
-    for (int i = 0; i < TRAIL_LENGTH; i++) {
-        ballTrail[i].alpha = MathLerp(ballTrail[i].alpha, 0.0f, 8.0f * dt);
-        ballTrail[i].scale = MathLerp(ballTrail[i].scale, 0.3f, 6.0f * dt);
-    }
-
-    ballTrail[trailIndex].x = ballX;
-    ballTrail[trailIndex].y = ballY;
-    ballTrail[trailIndex].alpha = 1.0f;
-    ballTrail[trailIndex].scale = 1.0f;
-
-    trailIndex = (trailIndex + 1) % TRAIL_LENGTH;
-}
-
-
-
-
-
-// =========================================================================
 // INICIALIZAÇÃO
 // =========================================================================
 void InitGame(void) {
@@ -389,12 +327,6 @@ void InitGame(void) {
     ball.scale = 1.0f;
     ball.rotation = 0.0f;
     ball.rotationSpeed = 0.0f;
-
-    // Inicializa trail
-    for (int i = 0; i < TRAIL_LENGTH; i++) {
-        ballTrail[i].alpha = 0.0f;
-        ballTrail[i].scale = 0.3f;
-    }
 
     // Configura pinos
     pinCount = 0;
@@ -613,22 +545,7 @@ void DrawGame(void) {
         DrawPredictionCurve();
     }
 
-    // Desenha trail da bola
-    for (int i = 0; i < TRAIL_LENGTH; i++) {
-        if (ballTrail[i].alpha > 0.01f) {
-            Color trailColor = ball.color;
-            trailColor.a = (unsigned char)(150 * ballTrail[i].alpha);
-            DrawCircle((int)ballTrail[i].x, (int)ballTrail[i].y,
-                      BALL_RADIUS * 0.7f * ballTrail[i].scale, trailColor);
-        }
-    }
-
-    // Desenha partículas
-    for (int i = 0; i < PARTICLE_COUNT; i++) {
-        if (particles[i].life > 0.0f) {
-            DrawCircle((int)particles[i].x, (int)particles[i].y, particles[i].size, particles[i].color);
-        }
-    }
+    DrawParticles();
 
     // Desenha bola
     if (ball.active) {

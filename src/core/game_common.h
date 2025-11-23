@@ -52,6 +52,12 @@ typedef struct {
     float size;
 } Particle;
 
+typedef struct {
+    float x, y;
+    float alpha;
+    float scale;
+} TrailPoint;
+
 // // Funções utilitárias
 float MathLerp(float a, float b, float t);
 float RandomFloat(float min, float max);
