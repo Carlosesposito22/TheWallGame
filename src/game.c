@@ -9,16 +9,7 @@
 #include "core/game_common.h"
 #include "core/physics.h"
 #include "core/particles.h"
-
-// =========================================================================
-// STRUCTS E ENUMS
-// =========================================================================
-typedef struct {
-    Vector2 start;
-    Vector2 end;
-    float alpha;
-    float probability;
-} PredictionPath;
+#include "core/prediction.h"
 
 typedef enum {
     STATE_START_SCREEN,
@@ -37,9 +28,6 @@ typedef struct {
     Color corTema;
 } Pergunta;
 
-// =========================================================================
-// VARIÁVEIS GLOBAIS
-// =========================================================================
 static Pin pins[NUM_PINS_X * NUM_PINS_Y];
 static int pinCount = 0;
 static int slotValues[SLOT_COUNT];
@@ -50,6 +38,18 @@ static float baseY;
 static char playerName[MAX_NAME_LENGTH + 1] = { 0 };
 static int letterCount = 0;
 static const int gameAreaHeight = 800;
+static InternalGameState currentState;
+static int slotCounts[SLOT_COUNT];
+static int totalBolas;
+static Ball ball;
+static int currentStage;
+static long long totalScore;
+static int lastAnswerWasCorrect;
+static int lastValue;
+static Color slotColor;
+static float uiPulse = 0.0f;
+static int comboCount = 0;
+static float comboDisplayTimer = 0.0f;
 
 static Pergunta perguntas[NUM_ETAPAS] = {
     { "Qual a capital da Franca?",
@@ -64,232 +64,8 @@ static Pergunta perguntas[NUM_ETAPAS] = {
       {"1. 1969", "2. 1975", "3. 1982"}, 0, COLOR_NEON_RED }
 };
 
-static InternalGameState currentState;
-static int slotCounts[SLOT_COUNT];
-static int totalBolas;
-static Ball ball;
-static int currentStage;
-static long long totalScore;
-static int lastAnswerWasCorrect;
-static int lastValue;
-static Color slotColor;
-
-static float uiPulse = 0.0f;
-static int comboCount = 0;
-static float comboDisplayTimer = 0.0f;
-
-// Variáveis para análise preditiva
-static PredictionPath predictionPaths[MAX_PREDICTION_PATHS];
-static float currentProbabilities[SLOT_COUNT];
-static char analysisText[3][64];
-static float uncertaintyLevel = 1.0f;
-static int pinsRemaining = NUM_PINS_Y;
-static int mostProbableSlot = -1;
-static float highestProbability = 0.0f;
-
 extern GameScreen currentScreen;
 
-// =========================================================================
-// FUNÇÕES MATEMÁTICAS E AUXILIARES
-// =========================================================================
-long long factorial(int n) {
-    if (n < 0) return 0;
-    long long f = 1;
-    for (int i = 2; i <= n; i++) f *= i;
-    return f;
-}
-
-long long combinations(int n, int k) {
-    if (k < 0 || k > n) return 0;
-    long long denom = factorial(k) * factorial(n - k);
-    return denom ? factorial(n) / denom : 0;
-}
-
-// float MathLerp(float a, float b, float t) {
-//     return a + t * (b - a);
-// }
-
-// float RandomFloat(float min, float max) {
-//     return min + ((float)rand() / RAND_MAX) * (max - min);
-// }
-
-// Função auxiliar para calcular precisão da análise preditiva
-float CalculatePredictionAccuracy(void) {
-    return 75.0f + (float)(rand() % 20); // Simula 75-95% de precisão
-}
-
-// =========================================================================
-// SISTEMA DE ANÁLISE PREDITIVA
-// =========================================================================
-
-void CalculateRealTimeProbabilities(float ballX, float ballY) {
-    // Calcula quantos pinos faltam baseado na posição Y da bola
-    float progress = (ballY - firstPinY) / ((baseY - BALL_RADIUS) - firstPinY);
-    progress = fmaxf(0.0f, fminf(1.0f, progress));
-    pinsRemaining = (int)((1.0f - progress) * NUM_PINS_Y);
-    pinsRemaining = fmax(1, pinsRemaining); // Mínimo 1 pino restante
-
-    // Calcula o slot central baseado na posição X atual
-    int centerSlot = (int)((ballX - firstSlotX) / slotWidth);
-    centerSlot = fmax(0, fmin(SLOT_COUNT - 1, centerSlot));
-
-    // Calcula probabilidades para cada slot
-    highestProbability = 0.0f;
-    mostProbableSlot = -1;
-
-    for (int targetSlot = 0; targetSlot < SLOT_COUNT; targetSlot++) {
-        // Distância do slot alvo ao slot central
-        int distance = abs(targetSlot - centerSlot);
-
-        // Se a distância for maior que os pinos restantes, probabilidade é zero
-        if (distance > pinsRemaining) {
-            currentProbabilities[targetSlot] = 0.0f;
-            continue;
-        }
-
-        // Calcula probabilidade binomial
-        double prob = (double)combinations(pinsRemaining, distance) * pow(0.5, pinsRemaining);
-        currentProbabilities[targetSlot] = (float)prob;
-
-        // Atualiza slot mais provável
-        if (prob > highestProbability) {
-            highestProbability = (float)prob;
-            mostProbableSlot = targetSlot;
-        }
-    }
-
-    // Calcula nível de incerteza (entropia)
-    uncertaintyLevel = 0.0f;
-    for (int i = 0; i < SLOT_COUNT; i++) {
-        if (currentProbabilities[i] > 0.0f) {
-            uncertaintyLevel -= currentProbabilities[i] * log2f(currentProbabilities[i]);
-        }
-    }
-    uncertaintyLevel /= log2f(SLOT_COUNT); // Normaliza para 0-1
-
-    // Atualiza textos de análise
-    if (pinsRemaining == NUM_PINS_Y) {
-        snprintf(analysisText[0], sizeof(analysisText[0]), "Incerteza Máxima (50/50)");
-        snprintf(analysisText[1], sizeof(analysisText[1]), "Todos os caminhos possíveis");
-        snprintf(analysisText[2], sizeof(analysisText[2]), "Distribuição Uniforme");
-    } else if (pinsRemaining > NUM_PINS_Y / 2) {
-        snprintf(analysisText[0], sizeof(analysisText[0]), "Alta Incerteza");
-        snprintf(analysisText[1], sizeof(analysisText[1]), "Múltiplos caminhos prováveis");
-        snprintf(analysisText[2], sizeof(analysisText[2]), "Convergindo gradualmente");
-    } else if (pinsRemaining > 2) {
-        snprintf(analysisText[0], sizeof(analysisText[0]), "Incerteza Moderada");
-        snprintf(analysisText[1], sizeof(analysisText[1]), "Focando no slot %d", mostProbableSlot + 1);
-        snprintf(analysisText[2], sizeof(analysisText[2]), "Curva se estreitando");
-    } else {
-        snprintf(analysisText[0], sizeof(analysisText[0]), "Baixa Incerteza");
-        snprintf(analysisText[1], sizeof(analysisText[1]), "Destino quase definido");
-        snprintf(analysisText[2], sizeof(analysisText[2]), "Slot %d (%.1f%%)",
-                 mostProbableSlot + 1, highestProbability * 100);
-    }
-}
-
-void UpdatePredictionPaths(float ballX, float ballY) {
-    // Limpa caminhos antigos
-    for (int i = 0; i < MAX_PREDICTION_PATHS; i++) {
-        predictionPaths[i].alpha = MathLerp(predictionPaths[i].alpha, 0.0f, 0.3f);
-    }
-
-    // Cria novos caminhos para slots com probabilidade significativa
-    int pathIndex = 0;
-    for (int slot = 0; slot < SLOT_COUNT && pathIndex < MAX_PREDICTION_PATHS; slot++) {
-        if (currentProbabilities[slot] > 0.05f) { // Apenas slots com >5% de chance
-            float slotCenterX = firstSlotX + slot * slotWidth + slotWidth / 2;
-
-            predictionPaths[pathIndex].start = (Vector2){ ballX, ballY };
-            predictionPaths[pathIndex].end = (Vector2){ slotCenterX, baseY - BALL_RADIUS };
-            predictionPaths[pathIndex].alpha = currentProbabilities[slot] * 0.8f;
-            predictionPaths[pathIndex].probability = currentProbabilities[slot];
-
-            pathIndex++;
-        }
-    }
-}
-
-void DrawPredictionCurve(void) {
-    if (pinsRemaining <= 0) return;
-
-    // Desenha curva de probabilidade preditiva
-    int pointCount = 50;
-    Vector2 points[pointCount];
-    float maxProb = 0.0f;
-
-    // Encontra probabilidade máxima para escalar o gráfico
-    for (int i = 0; i < SLOT_COUNT; i++) {
-        if (currentProbabilities[i] > maxProb) {
-            maxProb = currentProbabilities[i];
-        }
-    }
-
-    if (maxProb <= 0.0f) return;
-
-    // Cria pontos suaves para a curva
-    for (int i = 0; i < pointCount; i++) {
-        float t = (float)i / (pointCount - 1);
-        int slot = (int)(t * (SLOT_COUNT - 1));
-        float x = firstSlotX + slot * slotWidth + slotWidth / 2;
-        float y = baseY - (currentProbabilities[slot] / maxProb) * 150.0f; // Altura escalada
-
-        points[i] = (Vector2){ x, y };
-    }
-
-    // Desenha a curva suave
-    for (int i = 0; i < pointCount - 1; i++) {
-        float alpha = 150.0f * (0.3f + 0.7f * uncertaintyLevel);
-        Color curveColor = (Color){
-            COLOR_PREDICTION.r,
-            COLOR_PREDICTION.g,
-            COLOR_PREDICTION.b,
-            (unsigned char)alpha
-        };
-        DrawLineEx(points[i], points[i + 1], 3.0f, curveColor);
-    }
-
-    // Desenha área sob a curva
-    for (int i = 0; i < pointCount - 1; i++) {
-        Vector2 quad[4] = {
-            points[i],
-            points[i + 1],
-            {points[i + 1].x, baseY},
-            {points[i].x, baseY}
-        };
-        Color fillColor = (Color){
-            COLOR_PREDICTION.r,
-            COLOR_PREDICTION.g,
-            COLOR_PREDICTION.b,
-            30
-        };
-        DrawTriangle(quad[0], quad[1], quad[2], fillColor);
-        DrawTriangle(quad[0], quad[2], quad[3], fillColor);
-    }
-}
-
-void DrawPredictionPaths(void) {
-    for (int i = 0; i < MAX_PREDICTION_PATHS; i++) {
-        if (predictionPaths[i].alpha > 0.01f) {
-            Color pathColor = COLOR_PATH;
-            pathColor.a = (unsigned char)(predictionPaths[i].alpha * 255);
-
-            // Linha principal
-            DrawLineEx(predictionPaths[i].start, predictionPaths[i].end,
-                      2.0f * predictionPaths[i].probability, pathColor);
-
-            // Ponto de destino pulsante
-            float pulse = sinf(GetTime() * 4.0f) * 0.3f + 0.7f;
-            DrawCircleV(predictionPaths[i].end,
-                      6.0f * predictionPaths[i].probability * pulse,
-                      pathColor);
-        }
-    }
-}
-
-// =========================================================================
-// INICIALIZAÇÃO
-// =========================================================================
 void InitGame(void) {
     currentState = STATE_START_SCREEN;
     currentStage = 0;
@@ -303,19 +79,7 @@ void InitGame(void) {
     comboDisplayTimer = 0.0f;
     memset(playerName, 0, sizeof(playerName));
 
-    // Inicializa sistema preditivo
-    for (int i = 0; i < SLOT_COUNT; i++) {
-        slotCounts[i] = 0;
-        currentProbabilities[i] = 0.0f;
-    }
-
-    for (int i = 0; i < MAX_PREDICTION_PATHS; i++) {
-        predictionPaths[i].alpha = 0.0f;
-    }
-
-    strcpy(analysisText[0], "Aguardando início...");
-    strcpy(analysisText[1], "Preparando análise...");
-    strcpy(analysisText[2], "Sistema pronto");
+    InitPredictionSystem();
 
     // Inicializa bola
     ball.active = 0;
@@ -357,9 +121,6 @@ void InitGame(void) {
     InitParticles();
 }
 
-// =========================================================================
-// UPDATE COM ANÁLISE PREDITIVA
-// =========================================================================
 void UpdateGame(void) {
     float dt = GetFrameTime();
     UpdateSlowMotion();
@@ -412,12 +173,7 @@ void UpdateGame(void) {
         } break;
 
         case STATE_WAITING_FOR_BALL: {
-            // Reseta análise preditiva
-            pinsRemaining = NUM_PINS_Y;
-            uncertaintyLevel = 1.0f;
-            strcpy(analysisText[0], "Pronto para análise");
-            strcpy(analysisText[1], "Aguardando lançamento");
-            strcpy(analysisText[2], "Incerteza máxima");
+            ResetPredictionText();
 
             if ((IsKeyPressed(KEY_SPACE) || IsGestureDetected(GESTURE_TAP)) && !ball.active) {
                 ball.x = SCREEN_WIDTH * 0.5f;
@@ -489,9 +245,6 @@ void UpdateGame(void) {
     }
 }
 
-// =========================================================================
-// RENDERIZAÇÃO COM ANÁLISE PREDITIVA
-// =========================================================================
 void DrawGame(void) {
     BeginMode2D((Camera2D){
         { GetCameraOffsetX(), GetCameraOffsetY() },
@@ -584,18 +337,18 @@ void DrawGame(void) {
     // Barra de incerteza visual
     int uncertaintyBarWidth = statsPanelWidth - 40;
     DrawRectangle(statsPanelX + 20, 125, uncertaintyBarWidth, 12, (Color){50, 50, 70, 255});
-    DrawRectangle(statsPanelX + 20, 125, (int)(uncertaintyBarWidth * uncertaintyLevel), 12,
-                 (Color){255, (int)(255 * uncertaintyLevel), (int)(100 * (1.0f - uncertaintyLevel)), 255});
-    DrawText(TextFormat("Incerteza: %.0f%%", uncertaintyLevel * 100), statsPanelX + 20, 140, 14, LIGHTGRAY);
+    DrawRectangle(statsPanelX + 20, 125, (int)(uncertaintyBarWidth * GetUncertaintyLevel()), 12,
+                 (Color){255, (int)(255 * GetUncertaintyLevel()), (int)(100 * (1.0f - GetUncertaintyLevel())), 255});
+    DrawText(TextFormat("Incerteza: %.0f%%", GetUncertaintyLevel() * 100), statsPanelX + 20, 140, 14, LIGHTGRAY);
 
     // Análise preditiva em tempo real
     DrawText("ANÁLISE PREDITIVA:", statsPanelX + 20, 165, 16, COLOR_NEON_BLUE);
 
     if (ball.active && ball.slotIndex == -1) {
         // Textos dinâmicos de análise
-        DrawText(analysisText[0], statsPanelX + 25, 190, 16, WHITE);
-        DrawText(analysisText[1], statsPanelX + 25, 215, 14, LIGHTGRAY);
-        DrawText(analysisText[2], statsPanelX + 25, 235, 14, LIGHTGRAY);
+        DrawText(GetAnalysisLine(0), statsPanelX + 25, 190, 16, WHITE);
+        DrawText(GetAnalysisLine(1), statsPanelX + 25, 215, 14, LIGHTGRAY);
+        DrawText(GetAnalysisLine(2), statsPanelX + 25, 235, 14, LIGHTGRAY);
 
         // Slot mais provável
         if (mostProbableSlot >= 0) {
@@ -605,7 +358,7 @@ void DrawGame(void) {
         }
 
         // Pinos restantes
-        DrawText(TextFormat("Pinos restantes: %d/%d", pinsRemaining, NUM_PINS_Y),
+        DrawText(TextFormat("Pinos restantes: %d/%d", GetPinsRemaining(), NUM_PINS_Y),
                 statsPanelX + 25, 285, 14, COLOR_NEON_PURPLE);
     } else {
         DrawText("Aguardando lançamento...", statsPanelX + 25, 190, 16, GRAY);

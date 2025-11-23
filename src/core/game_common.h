@@ -58,8 +58,7 @@ typedef struct {
     float scale;
 } TrailPoint;
 
-// // Funções utilitárias
 float MathLerp(float a, float b, float t);
 float RandomFloat(float min, float max);
-// long long factorial(int n);
-// long long combinations(int n, int k);
+long long factorial(int n);
+long long combinations(int n, int k);
