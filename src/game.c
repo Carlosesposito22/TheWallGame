@@ -1,10 +1,12 @@
 #include "game.h"
-#include "commons.h"
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include "ranking.h"
+#include "commons.h"
+#include "core/effects.h"
+#include "core/game_common.h"
 
 // =========================================================================
 // CONSTANTES E DEFINIÇÕES APRIMORADAS
@@ -22,23 +24,10 @@
 #define NUM_ETAPAS 5
 #define PARTICLE_COUNT 80
 #define TRAIL_LENGTH 12
-#define SHAKE_DURATION 0.4f
 #define UI_ANIM_SPEED 3.0f
 #define MAX_PREDICTION_PATHS 8 
 
-static const Color COLOR_BG = { 8, 12, 32, 255 };
-static const Color COLOR_NEON_BLUE = { 0, 200, 255, 255 };
-static const Color COLOR_NEON_GOLD = { 255, 215, 0, 255 };
-static const Color COLOR_NEON_PURPLE = { 180, 70, 255, 255 };
-static const Color COLOR_NEON_GREEN = { 50, 255, 150, 255 };
-static const Color COLOR_NEON_RED = { 255, 50, 100, 255 };
-static const Color COLOR_UI_BG = { 20, 25, 45, 220 };
-static const Color COLOR_UI_BORDER = { 70, 130, 230, 255 };
-static const Color COLOR_PREDICTION = { 100, 255, 255, 120 };
-static const Color COLOR_PATH = { 255, 255, 100, 80 };
 
-static const int screenWidth = SCREEN_WIDTH;
-static const int screenHeight = SCREEN_HEIGHT;
 static const int gameAreaHeight = 800;
 
 // =========================================================================
@@ -112,8 +101,7 @@ static float slotWidth;
 static float baseY;
 static char playerName[MAX_NAME_LENGTH + 1] = { 0 };
 static int letterCount = 0;
-static int slowMoActive = 0;
-static float slowMoFactor = 0.20f;
+
 
 static Pergunta perguntas[NUM_ETAPAS] = {
     { "Qual a capital da Franca?",
@@ -140,10 +128,7 @@ static int lastAnswerWasCorrect;
 static int lastValue;
 static Color slotColor;
 static Particle particles[PARTICLE_COUNT];
-static float shakeTimer = 0.0f;
-static float shakeIntensity = 0.0f;
-static float cameraOffsetX = 0.0f;
-static float cameraOffsetY = 0.0f;
+
 static float uiPulse = 0.0f;
 static int comboCount = 0;
 static float comboDisplayTimer = 0.0f;
@@ -179,9 +164,9 @@ float MathLerp(float a, float b, float t) {
     return a + t * (b - a);
 }
 
-float RandomFloat(float min, float max) {
-    return min + ((float)rand() / RAND_MAX) * (max - min);
-}
+// float RandomFloat(float min, float max) {
+//     return min + ((float)rand() / RAND_MAX) * (max - min);
+// }
 
 // Função auxiliar para calcular precisão da análise preditiva
 float CalculatePredictionAccuracy(void) {
@@ -407,67 +392,9 @@ void UpdateBallTrail(float ballX, float ballY, float dt) {
     trailIndex = (trailIndex + 1) % TRAIL_LENGTH;
 }
 
-// =========================================================================
-// EFEITOS VISUAIS
-// =========================================================================
-void StartScreenShake(float intensity) {
-    shakeTimer = SHAKE_DURATION;
-    shakeIntensity = intensity;
-}
 
-void UpdateScreenShake(float dt) {
-    if (shakeTimer > 0.0f) {
-        shakeTimer -= dt;
-        cameraOffsetX = RandomFloat(-shakeIntensity, shakeIntensity) * (shakeTimer / SHAKE_DURATION);
-        cameraOffsetY = RandomFloat(-shakeIntensity, shakeIntensity) * (shakeTimer / SHAKE_DURATION);
-    } else {
-        cameraOffsetX = 0.0f;
-        cameraOffsetY = 0.0f;
-    }
-}
 
-// =========================================================================
-// CÂMERA LENTA (SLOW MOTION)
-// =========================================================================
-void UpdateSlowMotion(void) {
-    slowMoActive = IsKeyDown(KEY_S);
-}
 
-float ApplyTimeScale(float dt) {
-    return slowMoActive ? (dt * slowMoFactor) : dt;
-}
-
-void DrawSlowMotionIndicator(void) {
-    float pulse = sinf(GetTime() * 7.0f) * 0.5f + 0.5f;
-    unsigned char alpha = (unsigned char)(80 + 120 * pulse);
-
-    int cx = screenWidth / 2;
-    int cy = screenHeight / 2;
-
-    float size = 26.0f;      
-    float width = size * 1.4f; 
-
-    Vector2 v1 = (Vector2){ cx - width, cy };        
-    Vector2 v2 = (Vector2){ cx + width * 0.6f, cy - size };
-    Vector2 v3 = (Vector2){ cx + width * 0.6f, cy + size };
-
-    Color fill = (Color){ COLOR_NEON_BLUE.r, COLOR_NEON_BLUE.g, COLOR_NEON_BLUE.b, alpha };
-    Color border = (Color){ COLOR_NEON_GOLD.r, COLOR_NEON_GOLD.g, COLOR_NEON_GOLD.b, (unsigned char)(180 * (0.6f + 0.4f * pulse)) };
-
-    Color glow = (Color){ COLOR_NEON_BLUE.r, COLOR_NEON_BLUE.g, COLOR_NEON_BLUE.b, (unsigned char)(50 + 60 * pulse) };
-    DrawCircle(cx, cy, 60, glow);
-
-    Vector2 sv1 = (Vector2){ v1.x + 2, v1.y + 2 };
-    Vector2 sv2 = (Vector2){ v2.x + 2, v2.y + 2 };
-    Vector2 sv3 = (Vector2){ v3.x + 2, v3.y + 2 };
-    DrawTriangle(sv1, sv2, sv3, (Color){ 0, 0, 0, 50 });
-
-    DrawTriangle(v1, v2, v3, fill);
-    DrawTriangleLines(v1, v2, v3, border);
-
-    const char* txt = "Camera lenta";
-    DrawText(txt, cx - MeasureText(txt, 16)/2, cy + 50, 16, (Color){ 200, 220, 255, 180 });
-}
 
 // =========================================================================
 // INICIALIZAÇÃO
@@ -501,7 +428,7 @@ void InitGame(void) {
 
     // Inicializa bola
     ball.active = 0;
-    ball.x = screenWidth * 0.5f;
+    ball.x = SCREEN_WIDTH * 0.5f;
     ball.y = 60;
     ball.vx = 0;
     ball.vy = 0;
@@ -523,7 +450,7 @@ void InitGame(void) {
     for (int y = 0; y < NUM_PINS_Y; y++) {
         for (int x = 0; x < NUM_PINS_X; x++) {
             float offset = (y % 2 == 0) ? 0 : PIN_SPACING * 0.5f;
-            pins[pinCount].x = screenWidth * 0.5f - totalBoardWidth * 0.5f + offset + x * PIN_SPACING;
+            pins[pinCount].x = SCREEN_WIDTH * 0.5f - totalBoardWidth * 0.5f + offset + x * PIN_SPACING;
             pins[pinCount].y = firstPinY + y * PIN_SPACING;
             pins[pinCount].color = (Color){180, 180, 200, 255};
             pins[pinCount].visible = 1;
@@ -535,7 +462,7 @@ void InitGame(void) {
     slotWidth = PIN_SPACING;
     baseY = 750;
     float totalSlotsWidth = SLOT_COUNT * slotWidth;
-    firstSlotX = (screenWidth - totalSlotsWidth) * 0.5f;
+    firstSlotX = (SCREEN_WIDTH - totalSlotsWidth) * 0.5f;
 
     int valoresBase[SLOT_COUNT] = {1, 10, 1000, 100, 500, 100, 1000, 100, 500, 100, 1000, 10, 1};
     for (int i = 0; i < SLOT_COUNT; i++) {
@@ -586,7 +513,7 @@ void UpdateGame(void) {
                     comboCount++;
                     if (comboCount > 1) {
                         comboDisplayTimer = 2.0f;
-                        CreateParticles(screenWidth * 0.5f, 150, COLOR_NEON_GOLD, 20);
+                        CreateParticles(SCREEN_WIDTH * 0.5f, 150, COLOR_NEON_GOLD, 20);
                     }
                     StartScreenShake(3.0f);
                 } else {
@@ -608,7 +535,7 @@ void UpdateGame(void) {
             strcpy(analysisText[2], "Incerteza máxima");
 
             if ((IsKeyPressed(KEY_SPACE) || IsGestureDetected(GESTURE_TAP)) && !ball.active) {
-                ball.x = screenWidth * 0.5f;
+                ball.x = SCREEN_WIDTH * 0.5f;
                 ball.y = 60;
                 ball.vx = RandomFloat(-100, 100);
                 ball.vy = 0;
@@ -672,8 +599,8 @@ void UpdateGame(void) {
                     ball.vx = fabsf(ball.vx) * FRICTION;
                     CreateParticles(ball.x, ball.y, COLOR_NEON_BLUE, 5);
                 }
-                if (ball.x > screenWidth - BALL_RADIUS) {
-                    ball.x = screenWidth - BALL_RADIUS;
+                if (ball.x > SCREEN_WIDTH - BALL_RADIUS) {
+                    ball.x = SCREEN_WIDTH - BALL_RADIUS;
                     ball.vx = -fabsf(ball.vx) * FRICTION;
                     CreateParticles(ball.x, ball.y, COLOR_NEON_BLUE, 5);
                 }
@@ -750,21 +677,21 @@ void UpdateGame(void) {
 // =========================================================================
 void DrawGame(void) {
     BeginMode2D((Camera2D){
-        { cameraOffsetX, cameraOffsetY },
+        { GetCameraOffsetX(), GetCameraOffsetY() },
         { 0, 0 },
         0.0f, 1.0f
     });
 
     // Fundo gradiente moderno
-    for (int i = 0; i < screenHeight; i++) {
-        float t = (float)i / screenHeight;
+    for (int i = 0; i < SCREEN_HEIGHT; i++) {
+        float t = (float)i / SCREEN_HEIGHT;
         Color gradColor = (Color){
             COLOR_BG.r + (int)(t * 8),
             COLOR_BG.g + (int)(t * 12),
             COLOR_BG.b + (int)(t * 18),
             255
         };
-        DrawRectangle(0, i, screenWidth, 1, gradColor);
+        DrawRectangle(0, i, SCREEN_WIDTH, 1, gradColor);
     }
 
     // Desenha pinos
@@ -777,7 +704,7 @@ void DrawGame(void) {
     }
 
     // Área de slots
-    DrawRectangleGradientV(0, baseY, screenWidth, gameAreaHeight - baseY,
+    DrawRectangleGradientV(0, baseY, SCREEN_WIDTH, gameAreaHeight - baseY,
                           (Color){40, 45, 70, 255}, (Color){25, 30, 50, 255});
 
     for (int i = 0; i < SLOT_COUNT; i++) {
@@ -838,7 +765,7 @@ void DrawGame(void) {
     // =========================================================================
 
     int statsPanelWidth = 400;
-    int statsPanelX = screenWidth - statsPanelWidth - 20;
+    int statsPanelX = SCREEN_WIDTH - statsPanelWidth - 20;
 
     // Painel principal de análise (mais compacto sem o gráfico)
     DrawRectangle(statsPanelX, 20, statsPanelWidth, 300, COLOR_UI_BG);
@@ -890,7 +817,7 @@ void DrawGame(void) {
 
     int graphHeight = 150; // Altura reduzida para caber abaixo dos slots
     int graphY = baseY + 50; // Posiciona abaixo da área de slots
-    int graphWidth = screenWidth - 40; // Largura quase total da tela
+    int graphWidth = SCREEN_WIDTH - 40; // Largura quase total da tela
     int graphX = 20;
 
     // Fundo do gráfico
@@ -970,70 +897,70 @@ void DrawGame(void) {
     // =========================================================================
     switch (currentState) {
         case STATE_START_SCREEN: {
-            DrawRectangle(0, 0, screenWidth, screenHeight, Fade(BLACK, 0.85f));
+            DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.85f));
 
             float titleGlow = sinf(GetTime() * 2.5f) * 0.4f + 0.6f;
-            DrawText("THE WALL", (screenWidth - MeasureText("THE WALL", 120)) / 2, 250, 120,
+            DrawText("THE WALL", (SCREEN_WIDTH - MeasureText("THE WALL", 120)) / 2, 250, 120,
                     (Color){COLOR_NEON_GOLD.r, COLOR_NEON_GOLD.g, COLOR_NEON_GOLD.b, (int)(255 * titleGlow)});
 
             DrawText("Simulador de Distribuição Binomial",
-                    (screenWidth - MeasureText("Simulador de Distribuição Binomial", 36)) / 2, 400, 36, RAYWHITE);
+                    (SCREEN_WIDTH - MeasureText("Simulador de Distribuição Binomial", 36)) / 2, 400, 36, RAYWHITE);
 
             // Destaque para o novo sistema
             DrawText("COM ANÁLISE PREDITIVA EM TEMPO REAL",
-                    (screenWidth - MeasureText("COM ANÁLISE PREDITIVA EM TEMPO REAL", 24)) / 2, 470, 24, COLOR_NEON_BLUE);
+                    (SCREEN_WIDTH - MeasureText("COM ANÁLISE PREDITIVA EM TEMPO REAL", 24)) / 2, 470, 24, COLOR_NEON_BLUE);
 
             if (((int)(GetTime() * 2) % 2) == 0) {
                 DrawText("Pressione ENTER para começar",
-                        (screenWidth - MeasureText("Pressione ENTER para começar", 28)) / 2, 550, 28, COLOR_NEON_GREEN);
+                        (SCREEN_WIDTH - MeasureText("Pressione ENTER para começar", 28)) / 2, 550, 28, COLOR_NEON_GREEN);
             }
 
             DrawText("Trabalho de Estatística - Probabilidade e Combinatória",
-                    (screenWidth - MeasureText("Trabalho de Estatística - Probabilidade e Combinatória", 20)) / 2,
-                    screenHeight - 80, 20, GRAY);
+                    (SCREEN_WIDTH - MeasureText("Trabalho de Estatística - Probabilidade e Combinatória", 20)) / 2,
+                    SCREEN_HEIGHT - 80, 20, GRAY);
         } break;
 
         case STATE_ASKING_QUESTION: {
             Color bgColor = perguntas[currentStage].corTema;
-            DrawRectangle(0, 0, screenWidth, screenHeight, Fade(bgColor, 0.15f));
+            DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(bgColor, 0.15f));
 
-            DrawRectangle(screenWidth * 0.1f, screenHeight * 0.2f, screenWidth * 0.8f, screenHeight * 0.5f, COLOR_UI_BG);
-            DrawRectangleLines(screenWidth * 0.1f, screenHeight * 0.2f, screenWidth * 0.8f, screenHeight * 0.5f, bgColor);
+            DrawRectangle(SCREEN_WIDTH * 0.1f, SCREEN_HEIGHT * 0.2f, SCREEN_WIDTH * 0.8f, SCREEN_HEIGHT * 0.5f, COLOR_UI_BG);
+            DrawRectangleLines(SCREEN_WIDTH * 0.1f, SCREEN_HEIGHT * 0.2f, SCREEN_WIDTH * 0.8f, SCREEN_HEIGHT * 0.5f, bgColor);
 
             Pergunta q = perguntas[currentStage];
 
-            DrawText("PERGUNTA:", (screenWidth - MeasureText("PERGUNTA:", 28)) / 2, screenHeight * 0.23f, 28, WHITE);
-            DrawText(q.texto, (screenWidth - MeasureText(q.texto, 26)) / 2, screenHeight * 0.32f, 26, RAYWHITE);
+            DrawText("PERGUNTA:", (SCREEN_WIDTH - MeasureText("PERGUNTA:", 28)) / 2, SCREEN_HEIGHT * 0.23f, 28, WHITE);
+            DrawText(q.texto, (SCREEN_WIDTH - MeasureText(q.texto, 26)) / 2, SCREEN_HEIGHT * 0.32f, 26, RAYWHITE);
 
             for (int i = 0; i < 3; i++) {
-                int yPos = screenHeight * 0.45f + i * 60;
-                DrawRectangle(screenWidth * 0.2f, yPos, screenWidth * 0.6f, 50, Fade(WHITE, 0.1f));
-                DrawRectangleLines(screenWidth * 0.2f, yPos, screenWidth * 0.6f, 50, GRAY);
-                DrawText(q.opcoes[i], screenWidth * 0.22f, yPos + 12, 22, RAYWHITE);
-                DrawText(TextFormat("[%d]", i + 1), screenWidth * 0.7f, yPos + 12, 22, YELLOW);
+                int yPos = SCREEN_HEIGHT * 0.45f + i * 60;
+                DrawRectangle(SCREEN_WIDTH * 0.2f, yPos, SCREEN_WIDTH * 0.6f, 50, Fade(WHITE, 0.1f));
+                DrawRectangleLines(SCREEN_WIDTH * 0.2f, yPos, SCREEN_WIDTH * 0.6f, 50, GRAY);
+                DrawText(q.opcoes[i], SCREEN_WIDTH * 0.22f, yPos + 12, 22, RAYWHITE);
+                DrawText(TextFormat("[%d]", i + 1), SCREEN_WIDTH * 0.7f, yPos + 12, 22, YELLOW);
             }
 
             DrawText("Use as teclas 1, 2 ou 3 para responder",
-                    (screenWidth - MeasureText("Use as teclas 1, 2 ou 3 para responder", 20)) / 2,
-                    screenHeight * 0.7f, 20, COLOR_NEON_GREEN);
+                    (SCREEN_WIDTH - MeasureText("Use as teclas 1, 2 ou 3 para responder", 20)) / 2,
+                    SCREEN_HEIGHT * 0.7f, 20, COLOR_NEON_GREEN);
         } break;
 
         case STATE_WAITING_FOR_BALL: {
-            DrawRectangle(0, 0, screenWidth, 220, Fade(BLACK, 0.8f));
+            DrawRectangle(0, 0, SCREEN_WIDTH, 220, Fade(BLACK, 0.8f));
 
             if (lastAnswerWasCorrect) {
-                DrawText("✓ RESPOSTA CORRETA!", (screenWidth - MeasureText("✓ RESPOSTA CORRETA!", 40)) / 2, 80, 40, COLOR_NEON_GREEN);
+                DrawText("✓ RESPOSTA CORRETA!", (SCREEN_WIDTH - MeasureText("✓ RESPOSTA CORRETA!", 40)) / 2, 80, 40, COLOR_NEON_GREEN);
                 DrawText("O valor da bola será SOMADO à sua pontuação",
-                        (screenWidth - MeasureText("O valor da bola será SOMADO à sua pontuação", 24)) / 2, 130, 24, LIME);
+                        (SCREEN_WIDTH - MeasureText("O valor da bola será SOMADO à sua pontuação", 24)) / 2, 130, 24, LIME);
             } else {
-                DrawText("✗ RESPOSTA INCORRETA", (screenWidth - MeasureText("✗ RESPOSTA INCORRETA", 40)) / 2, 80, 40, COLOR_NEON_RED);
+                DrawText("✗ RESPOSTA INCORRETA", (SCREEN_WIDTH - MeasureText("✗ RESPOSTA INCORRETA", 40)) / 2, 80, 40, COLOR_NEON_RED);
                 DrawText("O valor da bola será SUBTRAÍDO da sua pontuação",
-                        (screenWidth - MeasureText("O valor da bola será SUBTRAÍDO da sua pontuação", 24)) / 2, 130, 24, ORANGE);
+                        (SCREEN_WIDTH - MeasureText("O valor da bola será SUBTRAÍDO da sua pontuação", 24)) / 2, 130, 24, ORANGE);
             }
 
             float pulse = sinf(GetTime() * 4.0f) * 0.5f + 0.5f;
             DrawText("PRESSIONE ESPAÇO PARA SOLTAR A BOLA",
-                    (screenWidth - MeasureText("PRESSIONE ESPAÇO PARA SOLTAR A BOLA", 28)) / 2, 180, 28,
+                    (SCREEN_WIDTH - MeasureText("PRESSIONE ESPAÇO PARA SOLTAR A BOLA", 28)) / 2, 180, 28,
                     (Color){255, 255, 100, (int)(255 * pulse)});
         } break;
 
@@ -1043,7 +970,7 @@ void DrawGame(void) {
         } break;
 
         case STATE_BALL_LANDED: {
-            DrawRectangle(0, 0, screenWidth, 240, Fade(BLACK, 0.8f));
+            DrawRectangle(0, 0, SCREEN_WIDTH, 240, Fade(BLACK, 0.8f));
 
             char resultadoStr[100];
             Color resultadoCor;
@@ -1056,40 +983,40 @@ void DrawGame(void) {
                 resultadoCor = COLOR_NEON_RED;
             }
 
-            DrawText("RESULTADO:", (screenWidth - MeasureText("RESULTADO:", 32)) / 2, 60, 32, WHITE);
+            DrawText("RESULTADO:", (SCREEN_WIDTH - MeasureText("RESULTADO:", 32)) / 2, 60, 32, WHITE);
             DrawText(TextFormat("Bola caiu no slot: %d (Valor: %d)", ball.slotIndex + 1, lastValue),
-                    (screenWidth - MeasureText(TextFormat("Bola caiu no slot: %d (Valor: %d)", ball.slotIndex + 1, lastValue), 26)) / 2,
+                    (SCREEN_WIDTH - MeasureText(TextFormat("Bola caiu no slot: %d (Valor: %d)", ball.slotIndex + 1, lastValue), 26)) / 2,
                     110, 26, RAYWHITE);
-            DrawText(resultadoStr, (screenWidth - MeasureText(resultadoStr, 30)) / 2, 160, 30, resultadoCor);
+            DrawText(resultadoStr, (SCREEN_WIDTH - MeasureText(resultadoStr, 30)) / 2, 160, 30, resultadoCor);
 
             // Comparação com a previsão
             if (mostProbableSlot >= 0) {
                 char predictionText[64];
                 if (ball.slotIndex == mostProbableSlot) {
                     snprintf(predictionText, sizeof(predictionText), "Previsão CORRETA! (%.1f%%)", highestProbability * 100);
-                    DrawText(predictionText, (screenWidth - MeasureText(predictionText, 20)) / 2, 200, 20, COLOR_NEON_GREEN);
+                    DrawText(predictionText, (SCREEN_WIDTH - MeasureText(predictionText, 20)) / 2, 200, 20, COLOR_NEON_GREEN);
                 } else {
                     snprintf(predictionText, sizeof(predictionText), "Previsão: Slot %d (%.1f%%)", mostProbableSlot + 1, highestProbability * 100);
-                    DrawText(predictionText, (screenWidth - MeasureText(predictionText, 18)) / 2, 200, 18, COLOR_NEON_BLUE);
+                    DrawText(predictionText, (SCREEN_WIDTH - MeasureText(predictionText, 18)) / 2, 200, 18, COLOR_NEON_BLUE);
                 }
             }
 
             if (((int)(GetTime() * 2) % 2) == 0) {
                 if (currentStage < NUM_ETAPAS - 1) {
                     DrawText("Pressione ENTER para a próxima etapa...",
-                            (screenWidth - MeasureText("Pressione ENTER para a próxima etapa...", 22)) / 2, 230, 22, YELLOW);
+                            (SCREEN_WIDTH - MeasureText("Pressione ENTER para a próxima etapa...", 22)) / 2, 230, 22, YELLOW);
                 } else {
                     DrawText("Pressione ENTER para ver seu resultado...",
-                            (screenWidth - MeasureText("Pressione ENTER para ver seu resultado...", 22)) / 2, 230, 22, YELLOW);
+                            (SCREEN_WIDTH - MeasureText("Pressione ENTER para ver seu resultado...", 22)) / 2, 230, 22, YELLOW);
                 }
             }
         } break;
 
         case STATE_NAME_INPUT: {
-            DrawRectangle(0, 0, screenWidth, screenHeight, Fade((Color){10, 20, 40, 255}, 0.95f));
+            DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade((Color){10, 20, 40, 255}, 0.95f));
 
-            int centerX = screenWidth / 2;
-            int centerY = screenHeight / 2;
+            int centerX = SCREEN_WIDTH / 2;
+            int centerY = SCREEN_HEIGHT / 2;
 
             DrawText("FIM DE JOGO!", centerX - MeasureText("FIM DE JOGO!", 60)/2, centerY - 200, 60, COLOR_NEON_GOLD);
 
@@ -1125,13 +1052,13 @@ void DrawGame(void) {
         } break;
 
         case STATE_GAME_OVER: {
-            DrawRectangle(0, 0, screenWidth, screenHeight, Fade(BLACK, 0.9f));
-            DrawText("FIM DE JOGO", (screenWidth - MeasureText("FIM DE JOGO", 80)) / 2, 150, 80, COLOR_NEON_GOLD);
+            DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.9f));
+            DrawText("FIM DE JOGO", (SCREEN_WIDTH - MeasureText("FIM DE JOGO", 80)) / 2, 150, 80, COLOR_NEON_GOLD);
             DrawText(TextFormat("Pontuação Final: %lld", totalScore),
-                    (screenWidth - MeasureText(TextFormat("Pontuação Final: %lld", totalScore), 40)) / 2, 250, 40, YELLOW);
+                    (SCREEN_WIDTH - MeasureText(TextFormat("Pontuação Final: %lld", totalScore), 40)) / 2, 250, 40, YELLOW);
 
-            DrawText("Pressione R para reiniciar", (screenWidth - MeasureText("Pressione R para reiniciar", 28)) / 2, 350, 28, RAYWHITE);
-            DrawText("Pressione Q para voltar ao menu", (screenWidth - MeasureText("Pressione Q para voltar ao menu", 28)) / 2, 390, 28, LIGHTGRAY);
+            DrawText("Pressione R para reiniciar", (SCREEN_WIDTH - MeasureText("Pressione R para reiniciar", 28)) / 2, 350, 28, RAYWHITE);
+            DrawText("Pressione Q para voltar ao menu", (SCREEN_WIDTH - MeasureText("Pressione Q para voltar ao menu", 28)) / 2, 390, 28, LIGHTGRAY);
         } break;
 
         default: {
@@ -1144,13 +1071,13 @@ void DrawGame(void) {
         float comboPulse = sinf(GetTime() * 8.0f) * 0.5f + 0.5f;
         float floatOffset = sinf(GetTime() * 3.0f) * 8.0f;
         DrawText(TextFormat("COMBO x%d!", comboCount),
-                screenWidth/2 - MeasureText(TextFormat("COMBO x%d!", comboCount), 42)/2,
+                SCREEN_WIDTH/2 - MeasureText(TextFormat("COMBO x%d!", comboCount), 42)/2,
                 120 + floatOffset, 42,
                 (Color){255, (int)(200 + comboPulse * 55), 100, 255});
     }
 
     // Indicador de câmera lenta
-    if (slowMoActive) {
+    if (IsSlowMotionActive()) {
         DrawSlowMotionIndicator();
     }
 }
