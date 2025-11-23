@@ -1,5 +1,15 @@
-// // physics.h
-// #pragma once
-// #include "game_common.h"
+// physics.h
+#pragma once
+#include "raylib.h"
+#include "game_common.h"
+#include "particles.h"
 
-// void UpdateBallPhysics(Ball* ball, float dt, Pin* pins, int pinCount, float screenWidth, float baseY, float firstSlotX, float slotWidth, void (*OnSlotLanded)(int slotIndex));
+int UpdateBallPhysics(
+    Ball* ball,
+    Pin* pins, int pinCount,
+    float baseY, float firstSlotX, float slotWidth,
+    int slotCounts[], int* totalBolas,
+    int slotValues[], long long* totalScore,
+    int lastAnswerWasCorrect,
+    float dt
+);
