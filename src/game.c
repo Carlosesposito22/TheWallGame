@@ -10,6 +10,7 @@
 #include "core/physics.h"
 #include "core/particles.h"
 #include "core/prediction.h"
+#include "core/ball.h"
 
 typedef enum {
     STATE_START_SCREEN,
@@ -82,15 +83,7 @@ void InitGame(void) {
     InitPredictionSystem();
 
     // Inicializa bola
-    ball.active = 0;
-    ball.x = SCREEN_WIDTH * 0.5f;
-    ball.y = 60;
-    ball.vx = 0;
-    ball.vy = 0;
-    ball.color = COLOR_NEON_GOLD;
-    ball.scale = 1.0f;
-    ball.rotation = 0.0f;
-    ball.rotationSpeed = 0.0f;
+    InitBall(&ball);
 
     // Configura pinos
     pinCount = 0;
@@ -175,18 +168,8 @@ void UpdateGame(void) {
         case STATE_WAITING_FOR_BALL: {
             ResetPredictionText();
 
-            if ((IsKeyPressed(KEY_SPACE) || IsGestureDetected(GESTURE_TAP)) && !ball.active) {
-                ball.x = SCREEN_WIDTH * 0.5f;
-                ball.y = 60;
-                ball.vx = RandomFloat(-100, 100);
-                ball.vy = 0;
-                ball.active = 1;
-                ball.slotIndex = -1;
-                ball.color = lastAnswerWasCorrect ? COLOR_NEON_GREEN : COLOR_NEON_RED;
-                ball.scale = 1.3f;
-                ball.rotationSpeed = ball.vx * 0.02f;
+            if ((IsKeyPressed(KEY_SPACE) || IsGestureDetected(GESTURE_TAP)) && TrySpawnBall(&ball, lastAnswerWasCorrect))
                 currentState = STATE_BALL_FALLING;
-            }
         } break;
 
         case STATE_BALL_FALLING: {
@@ -197,9 +180,8 @@ void UpdateGame(void) {
                 CalculateRealTimeProbabilities(ball.x, ball.y);
                 UpdatePredictionPaths(ball.x, ball.y);
 
-                if (UpdateBallPhysics(&ball,pins, pinCount,baseY, firstSlotX, slotWidth,slotCounts, &totalBolas,slotValues, &totalScore,lastAnswerWasCorrect,dt)) {
+                if (UpdateBallPhysics(&ball,pins, pinCount,baseY, firstSlotX, slotWidth,slotCounts, &totalBolas,slotValues, &totalScore,lastAnswerWasCorrect,dt))
                     currentState = STATE_BALL_LANDED;
-                }
             }
         } break;
 
@@ -274,8 +256,7 @@ void DrawGame(void) {
     }
 
     // Área de slots
-    DrawRectangleGradientV(0, baseY, SCREEN_WIDTH, gameAreaHeight - baseY,
-                          (Color){40, 45, 70, 255}, (Color){25, 30, 50, 255});
+    DrawRectangleGradientV(0, baseY, SCREEN_WIDTH, gameAreaHeight - baseY, (Color){40, 45, 70, 255}, (Color){25, 30, 50, 255});
 
     for (int i = 0; i < SLOT_COUNT; i++) {
         float x = firstSlotX + i * slotWidth;
@@ -301,17 +282,7 @@ void DrawGame(void) {
     DrawParticles();
 
     // Desenha bola
-    if (ball.active) {
-        DrawCircle((int)ball.x, (int)ball.y, BALL_RADIUS * ball.scale + 3,
-                  (Color){255, 255, 255, 80});
-
-        DrawCircle((int)ball.x, (int)ball.y, BALL_RADIUS * ball.scale, ball.color);
-        DrawCircleLines((int)ball.x, (int)ball.y, BALL_RADIUS * ball.scale, WHITE);
-
-        float markerX = ball.x + cosf(ball.rotation) * BALL_RADIUS * 0.6f;
-        float markerY = ball.y + sinf(ball.rotation) * BALL_RADIUS * 0.6f;
-        DrawCircle((int)markerX, (int)markerY, BALL_RADIUS * 0.2f, (Color){255, 255, 255, 180});
-    }
+    DrawBall(&ball);
 
     EndMode2D();
 
