@@ -31,7 +31,6 @@ typedef struct {
 
 static Pin pins[NUM_PINS_X * NUM_PINS_Y];
 static int pinCount = 0;
-static int slotValues[SLOT_COUNT];
 static float firstPinY = 120.0f;
 static float firstSlotX;
 static float slotWidth;
@@ -40,17 +39,17 @@ static char playerName[MAX_NAME_LENGTH + 1] = { 0 };
 static int letterCount = 0;
 static const int gameAreaHeight = 800;
 static InternalGameState currentState;
-static int slotCounts[SLOT_COUNT];
-static int totalBolas;
-static Ball ball;
 static int currentStage;
-static long long totalScore;
 static int lastAnswerWasCorrect;
-static int lastValue;
 static Color slotColor;
 static float uiPulse = 0.0f;
 static int comboCount = 0;
 static float comboDisplayTimer = 0.0f;
+
+int slotValues[SLOT_COUNT];
+int slotCounts[SLOT_COUNT];
+int totalBolas;
+long long totalScore;
 
 static Pergunta perguntas[NUM_ETAPAS] = {
     { "Qual a capital da Franca?",
@@ -73,7 +72,6 @@ void InitGame(void) {
     totalScore = 0;
     totalBolas = 0;
     lastAnswerWasCorrect = 0;
-    lastValue = 0;
     slotColor = COLOR_NEON_BLUE;
     letterCount = 0;
     comboCount = 0;
@@ -83,7 +81,7 @@ void InitGame(void) {
     InitPredictionSystem();
 
     // Inicializa bola
-    InitBall(&ball);
+    InitBalls();
 
     // Configura pinos
     pinCount = 0;
@@ -168,20 +166,23 @@ void UpdateGame(void) {
         case STATE_WAITING_FOR_BALL: {
             ResetPredictionText();
 
-            if ((IsKeyPressed(KEY_SPACE) || IsGestureDetected(GESTURE_TAP)) && TrySpawnBall(&ball, lastAnswerWasCorrect))
+            if ((IsKeyPressed(KEY_SPACE) || IsGestureDetected(GESTURE_TAP))) {
+                SpawnBall(lastAnswerWasCorrect);
                 currentState = STATE_BALL_FALLING;
+            }
         } break;
 
         case STATE_BALL_FALLING: {
-            if (ball.active) {
-                UpdateBallTrail(ball.x, ball.y, dt);
+            if (AnyBallActive()) {
+                UpdateBalls(pins, pinCount, baseY, firstSlotX, slotWidth, lastAnswerWasCorrect, dt);
 
-                // ATUALIZA ANÁLISE PREDITIVA EM TEMPO REAL
-                CalculateRealTimeProbabilities(ball.x, ball.y);
-                UpdatePredictionPaths(ball.x, ball.y);
-
-                if (UpdateBallPhysics(&ball,pins, pinCount,baseY, firstSlotX, slotWidth,slotCounts, &totalBolas,slotValues, &totalScore,lastAnswerWasCorrect,dt))
-                    currentState = STATE_BALL_LANDED;
+                Ball* refBall = GetFirstActiveBall();
+                if (refBall) {
+                    CalculateRealTimeProbabilities(refBall->x, refBall->y);
+                    UpdatePredictionPaths(refBall->x, refBall->y);
+                }
+            } else {
+                currentState = STATE_BALL_LANDED;
             }
         } break;
 
@@ -266,29 +267,22 @@ void DrawGame(void) {
         sprintf(txt, "%d", slotValues[i]);
         int textWidth = MeasureText(txt, 20);
         DrawText(txt, x + slotWidth/2 - textWidth/2, baseY + 20, 20, slotColor);
-
-        if (ball.slotIndex == i && !ball.active) {
-            DrawRectangleGradientH(x + 2, baseY, slotWidth - 4, 8,
-                                 COLOR_NEON_GOLD, (Color){255, 215, 0, 0});
-        }
     }
 
     // DESENHA VISUALIZAÇÃO PREDITIVA (apenas quando a bola está caindo)
-    if (ball.active && ball.slotIndex == -1) {
+    if (AnyBallActive()) {
         DrawPredictionPaths();
         DrawPredictionCurve();
     }
 
     DrawParticles();
-
-    // Desenha bola
-    DrawBall(&ball);
+    DrawBalls();
 
     EndMode2D();
 
     // Painéis e gráficos da análise preditiva
-    DrawPredictionPanel(totalBolas, currentStage, comboCount, slotCounts, ball.slotIndex, ball.active, ball.slotIndex);
-    DrawPredictionChart(totalBolas, slotCounts, ball.slotIndex, baseY);
+    DrawPredictionPanel(totalBolas, currentStage, comboCount, slotCounts, GetLastBallSlot(), AnyBallActive(), GetLastBallSlot());
+    DrawPredictionChart(totalBolas, slotCounts, GetLastBallSlot(), baseY);
 
     // Painel de pontuação superior esquerdo
     DrawRectangle(20, 20, 280, 100, COLOR_UI_BG);
@@ -380,30 +374,25 @@ void DrawGame(void) {
             Color resultadoCor;
 
             if (lastAnswerWasCorrect) {
-                snprintf(resultadoStr, sizeof(resultadoStr), "✓ Você GANHOU %d pontos!", lastValue);
+                snprintf(resultadoStr, sizeof(resultadoStr), "✓ Rodada concluída! Confira sua pontuação!");
                 resultadoCor = COLOR_NEON_GREEN;
             } else {
-                snprintf(resultadoStr, sizeof(resultadoStr), "✗ Você PERDEU %d pontos!", lastValue);
+                snprintf(resultadoStr, sizeof(resultadoStr), "✗ Rodada concluída! Pontos reduzidos!");
                 resultadoCor = COLOR_NEON_RED;
             }
-
-            DrawText("RESULTADO:", (SCREEN_WIDTH - MeasureText("RESULTADO:", 32)) / 2, 60, 32, WHITE);
-            DrawText(TextFormat("Bola caiu no slot: %d (Valor: %d)", ball.slotIndex + 1, lastValue),
-                    (SCREEN_WIDTH - MeasureText(TextFormat("Bola caiu no slot: %d (Valor: %d)", ball.slotIndex + 1, lastValue), 26)) / 2,
-                    110, 26, RAYWHITE);
-            DrawText(resultadoStr, (SCREEN_WIDTH - MeasureText(resultadoStr, 30)) / 2, 160, 30, resultadoCor);
+            DrawText(resultadoStr, (SCREEN_WIDTH - MeasureText(resultadoStr, 30)) / 2, 130, 30, resultadoCor);
 
             // Comparação com a previsão
-            if (mostProbableSlot >= 0) {
-                char predictionText[64];
-                if (ball.slotIndex == mostProbableSlot) {
-                    snprintf(predictionText, sizeof(predictionText), "Previsão CORRETA! (%.1f%%)", highestProbability * 100);
-                    DrawText(predictionText, (SCREEN_WIDTH - MeasureText(predictionText, 20)) / 2, 200, 20, COLOR_NEON_GREEN);
-                } else {
-                    snprintf(predictionText, sizeof(predictionText), "Previsão: Slot %d (%.1f%%)", mostProbableSlot + 1, highestProbability * 100);
-                    DrawText(predictionText, (SCREEN_WIDTH - MeasureText(predictionText, 18)) / 2, 200, 18, COLOR_NEON_BLUE);
-                }
-            }
+            // if (mostProbableSlot >= 0) {
+            //     char predictionText[64];
+            //     if (ball.slotIndex == mostProbableSlot) {
+            //         snprintf(predictionText, sizeof(predictionText), "Previsão CORRETA! (%.1f%%)", highestProbability * 100);
+            //         DrawText(predictionText, (SCREEN_WIDTH - MeasureText(predictionText, 20)) / 2, 200, 20, COLOR_NEON_GREEN);
+            //     } else {
+            //         snprintf(predictionText, sizeof(predictionText), "Previsão: Slot %d (%.1f%%)", mostProbableSlot + 1, highestProbability * 100);
+            //         DrawText(predictionText, (SCREEN_WIDTH - MeasureText(predictionText, 18)) / 2, 200, 18, COLOR_NEON_BLUE);
+            //     }
+            // }
 
             if (((int)(GetTime() * 2) % 2) == 0) {
                 if (currentStage < NUM_ETAPAS - 1) {
