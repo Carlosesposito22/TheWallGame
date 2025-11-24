@@ -11,6 +11,7 @@
 #include "core/particles.h"
 #include "core/prediction.h"
 #include "core/ball.h"
+#include "core/quiz.h"
 
 typedef enum {
     STATE_START_SCREEN,
@@ -22,13 +23,6 @@ typedef enum {
     STATE_GAME_OVER
 } InternalGameState;
 
-typedef struct {
-    const char* texto;
-    const char* opcoes[3];
-    int resposta_correta;
-    Color corTema;
-} Pergunta;
-
 static Pin pins[NUM_PINS_X * NUM_PINS_Y];
 static int pinCount = 0;
 static float firstPinY = 120.0f;
@@ -39,31 +33,16 @@ static char playerName[MAX_NAME_LENGTH + 1] = { 0 };
 static int letterCount = 0;
 static const int gameAreaHeight = 800;
 static InternalGameState currentState;
-static int currentStage;
 static int lastAnswerWasCorrect;
 static Color slotColor;
-static float uiPulse = 0.0f;
 static int comboCount = 0;
 static float comboDisplayTimer = 0.0f;
 
+int currentStage;
 int slotValues[SLOT_COUNT];
 int slotCounts[SLOT_COUNT];
 int totalBolas;
 long long totalScore;
-
-static Pergunta perguntas[NUM_ETAPAS] = {
-    { "Qual a capital da Franca?",
-      {"1. Londres", "2. Paris", "3. Berlim"}, 1, COLOR_NEON_BLUE },
-    { "Quem pintou a Mona Lisa?",
-      {"1. Van Gogh", "2. Picasso", "3. Da Vinci"}, 2, COLOR_NEON_GOLD },
-    { "Quanto e 5 x 8?",
-      {"1. 40", "2. 45", "3. 35"}, 0, COLOR_NEON_GREEN },
-    { "Qual o maior planeta do Sistema Solar?",
-      {"1. Terra", "2. Marte", "3. Jupiter"}, 2, COLOR_NEON_PURPLE },
-    { "Em que ano o homem pisou na Lua?",
-      {"1. 1969", "2. 1975", "3. 1982"}, 0, COLOR_NEON_RED }
-};
-
 extern GameScreen currentScreen;
 
 void InitGame(void) {
@@ -79,14 +58,12 @@ void InitGame(void) {
     memset(playerName, 0, sizeof(playerName));
 
     InitPredictionSystem();
-
-    // Inicializa bola
     InitBalls();
+    InitParticles();
 
     // Configura pinos
     pinCount = 0;
     float totalBoardWidth = NUM_PINS_X * PIN_SPACING;
-
     for (int y = 0; y < NUM_PINS_Y; y++) {
         for (int x = 0; x < NUM_PINS_X; x++) {
             float offset = (y % 2 == 0) ? 0 : PIN_SPACING * 0.5f;
@@ -108,8 +85,6 @@ void InitGame(void) {
     for (int i = 0; i < SLOT_COUNT; i++) {
         slotValues[i] = valoresBase[i];
     }
-
-    InitParticles();
 }
 
 void UpdateGame(void) {
@@ -117,18 +92,12 @@ void UpdateGame(void) {
     UpdateSlowMotion();
     dt = ApplyTimeScale(dt);
 
-    uiPulse = sinf(GetTime() * UI_ANIM_SPEED) * 0.5f + 0.5f;
-
     if (comboDisplayTimer > 0.0f) {
         comboDisplayTimer -= dt;
     }
 
     UpdateScreenShake(dt);
     UpdateParticles(dt);
-
-    if (IsKeyPressed(KEY_ESCAPE)) {
-        currentScreen = SCREEN_MENU;
-    }
 
     switch (currentState) {
         case STATE_START_SCREEN: {
@@ -138,13 +107,9 @@ void UpdateGame(void) {
         } break;
 
         case STATE_ASKING_QUESTION: {
-            int resposta = -1;
-            if (IsKeyPressed(KEY_ONE) || IsKeyPressed(KEY_KP_1)) resposta = 0;
-            if (IsKeyPressed(KEY_TWO) || IsKeyPressed(KEY_KP_2)) resposta = 1;
-            if (IsKeyPressed(KEY_THREE) || IsKeyPressed(KEY_KP_3)) resposta = 2;
-
-            if (resposta != -1) {
-                if (resposta == perguntas[currentStage].resposta_correta) {
+            int result = UpdateQuiz();
+            if (result != -1) {
+                if (result == 1) {
                     lastAnswerWasCorrect = 1;
                     slotColor = COLOR_NEON_GREEN;
                     comboCount++;
@@ -269,7 +234,6 @@ void DrawGame(void) {
         DrawText(txt, x + slotWidth/2 - textWidth/2, baseY + 20, 20, slotColor);
     }
 
-    // DESENHA VISUALIZAÇÃO PREDITIVA (apenas quando a bola está caindo)
     if (AnyBallActive()) {
         DrawPredictionPaths();
         DrawPredictionCurve();
@@ -319,28 +283,7 @@ void DrawGame(void) {
         } break;
 
         case STATE_ASKING_QUESTION: {
-            Color bgColor = perguntas[currentStage].corTema;
-            DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(bgColor, 0.15f));
-
-            DrawRectangle(SCREEN_WIDTH * 0.1f, SCREEN_HEIGHT * 0.2f, SCREEN_WIDTH * 0.8f, SCREEN_HEIGHT * 0.5f, COLOR_UI_BG);
-            DrawRectangleLines(SCREEN_WIDTH * 0.1f, SCREEN_HEIGHT * 0.2f, SCREEN_WIDTH * 0.8f, SCREEN_HEIGHT * 0.5f, bgColor);
-
-            Pergunta q = perguntas[currentStage];
-
-            DrawText("PERGUNTA:", (SCREEN_WIDTH - MeasureText("PERGUNTA:", 28)) / 2, SCREEN_HEIGHT * 0.23f, 28, WHITE);
-            DrawText(q.texto, (SCREEN_WIDTH - MeasureText(q.texto, 26)) / 2, SCREEN_HEIGHT * 0.32f, 26, RAYWHITE);
-
-            for (int i = 0; i < 3; i++) {
-                int yPos = SCREEN_HEIGHT * 0.45f + i * 60;
-                DrawRectangle(SCREEN_WIDTH * 0.2f, yPos, SCREEN_WIDTH * 0.6f, 50, Fade(WHITE, 0.1f));
-                DrawRectangleLines(SCREEN_WIDTH * 0.2f, yPos, SCREEN_WIDTH * 0.6f, 50, GRAY);
-                DrawText(q.opcoes[i], SCREEN_WIDTH * 0.22f, yPos + 12, 22, RAYWHITE);
-                DrawText(TextFormat("[%d]", i + 1), SCREEN_WIDTH * 0.7f, yPos + 12, 22, YELLOW);
-            }
-
-            DrawText("Use as teclas 1, 2 ou 3 para responder",
-                    (SCREEN_WIDTH - MeasureText("Use as teclas 1, 2 ou 3 para responder", 20)) / 2,
-                    SCREEN_HEIGHT * 0.7f, 20, COLOR_NEON_GREEN);
+            DrawQuiz(currentStage);
         } break;
 
         case STATE_WAITING_FOR_BALL: {
@@ -381,18 +324,6 @@ void DrawGame(void) {
                 resultadoCor = COLOR_NEON_RED;
             }
             DrawText(resultadoStr, (SCREEN_WIDTH - MeasureText(resultadoStr, 30)) / 2, 130, 30, resultadoCor);
-
-            // Comparação com a previsão
-            // if (mostProbableSlot >= 0) {
-            //     char predictionText[64];
-            //     if (ball.slotIndex == mostProbableSlot) {
-            //         snprintf(predictionText, sizeof(predictionText), "Previsão CORRETA! (%.1f%%)", highestProbability * 100);
-            //         DrawText(predictionText, (SCREEN_WIDTH - MeasureText(predictionText, 20)) / 2, 200, 20, COLOR_NEON_GREEN);
-            //     } else {
-            //         snprintf(predictionText, sizeof(predictionText), "Previsão: Slot %d (%.1f%%)", mostProbableSlot + 1, highestProbability * 100);
-            //         DrawText(predictionText, (SCREEN_WIDTH - MeasureText(predictionText, 18)) / 2, 200, 18, COLOR_NEON_BLUE);
-            //     }
-            // }
 
             if (((int)(GetTime() * 2) % 2) == 0) {
                 if (currentStage < NUM_ETAPAS - 1) {
@@ -452,10 +383,6 @@ void DrawGame(void) {
 
             DrawText("Pressione R para reiniciar", (SCREEN_WIDTH - MeasureText("Pressione R para reiniciar", 28)) / 2, 350, 28, RAYWHITE);
             DrawText("Pressione Q para voltar ao menu", (SCREEN_WIDTH - MeasureText("Pressione Q para voltar ao menu", 28)) / 2, 390, 28, LIGHTGRAY);
-        } break;
-
-        default: {
-            // Estado não tratado - não faz nada
         } break;
     }
 
