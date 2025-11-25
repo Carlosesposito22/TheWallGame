@@ -35,17 +35,30 @@ void InitBalls(void) {
     // Não calculamos mais posições fixas aqui para evitar erros de inicialização
 }
 
-bool SpawnBall(bool lastAnswerWasCorrect) {
+bool SpawnBall(bool lastAnswerWasCorrect, int selectedSlot) {
+    // É necessário ter acesso a estas variáveis (ou passá-las como parâmetros)
+    // Se WALL_MARGIN não está definida neste arquivo, certifique-se de que ela está acessível.
+    #ifndef WALL_MARGIN
+    // Assumindo que WALL_MARGIN é 350.0f, conforme definido em game.c
+    // Idealmente, esta constante deveria estar em "commons.h"
+    #define WALL_MARGIN 350.0f
+    #endif
+
     if (ballCount >= MAX_BALLS) return false;
 
     // 1. Definição da área jogável (DENTRO das paredes)
-    // Se SCREEN_WIDTH for uma macro, ok. Se for função GetScreenWidth(), também ok.
     float leftBound = WALL_MARGIN;
-    float rightBound = SCREEN_WIDTH - WALL_MARGIN;
+    // SCREEN_WIDTH precisa estar acessível (e.g., via GetScreenWidth() se for raylib)
+    float rightBound = SCREEN_WIDTH - WALL_MARGIN; 
     float playableWidth = rightBound - leftBound;
 
-    // 2. Escolhe um slot (0 a 6)
-    int slot = rand() % TOP_SLOTS;
+    // 2. O slot é passado como parâmetro. Não é mais aleatório.
+    int slot = selectedSlot; 
+    
+    // Verificação de segurança: Garantir que o slot escolhido está dentro dos limites.
+    if (slot < 0 || slot >= TOP_SLOTS) {
+        slot = 0; // Fallback para o primeiro slot se for inválido.
+    }
 
     // 3. Calcula a largura de cada slot superior
     float slotWidth = playableWidth / (float)TOP_SLOTS;
@@ -62,7 +75,7 @@ bool SpawnBall(bool lastAnswerWasCorrect) {
     // mas mantendo dentro do slot (slotWidth * 0.2 é seguro)
     x += RandomFloat(-slotWidth * 0.2f, slotWidth * 0.2f);
 
-    // Verifica sobreposição para não "grudar" em bolas paradas no topo
+    // Verifica sobreposição para não "grudar" em bolas paradas no topo (mantido)
     for (int t = 0; t < 5; t++) {
         bool overlap = false;
         for (int i = 0; i < ballCount; i++) {
@@ -80,7 +93,7 @@ bool SpawnBall(bool lastAnswerWasCorrect) {
         if (!overlap) break;
     }
 
-    // Configura a nova bola
+    // Configura a nova bola (restante inalterado)
     Ball *b = &balls[ballCount++];
     b->x = x;
     b->y = y;

@@ -139,3 +139,12 @@ void DrawGameOverHUD(long long totalScore)
              (SCREEN_WIDTH - MeasureText("Pressione Q para voltar ao menu", 28)) / 2,
              390, 28, LIGHTGRAY);
 }
+
+void DrawChoosingSlotHUD(void) {
+    DrawText("ESCOLHA O SLOT DE LANÇAMENTO", 
+             SCREEN_WIDTH / 2 - MeasureText("ESCOLHA O SLOT DE LANÇAMENTO", 30) / 2, 
+             SCREEN_HEIGHT / 2, 30, WHITE);
+    DrawText("Use SETAS ou A/D para mover. ENTER para confirmar.", 
+             SCREEN_WIDTH / 2 - MeasureText("Use SETAS ou A/D para mover. ENTER para confirmar.", 20) / 2, 
+             SCREEN_HEIGHT / 2 + 40, 20, COLOR_NEON_BLUE);
+}

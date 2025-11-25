@@ -28,6 +28,7 @@ static float rightWallX;
 
 typedef enum {
     STATE_START_SCREEN,
+    STATE_CHOOSING_SLOT,
     STATE_ASKING_QUESTION,
     STATE_WAITING_FOR_BALL,
     STATE_BALL_FALLING,
@@ -36,6 +37,7 @@ typedef enum {
     STATE_GAME_OVER
 } InternalGameState;
 
+static int selectedSlot = 0;
 static Pin pins[MAX_PINS];
 static int pinCount = 0;
 static float firstSlotX;
@@ -58,7 +60,7 @@ long long totalScore;
 extern GameScreen currentScreen;
 
 void InitGame(void) {
-    currentState = STATE_START_SCREEN;
+    currentState = STATE_CHOOSING_SLOT;
     currentStage = 0;
     totalScore = 0;
     totalBolas = 0;
@@ -181,6 +183,24 @@ void UpdateGame(void) {
     switch (currentState) {
         case STATE_START_SCREEN: {
             if (IsKeyPressed(KEY_ENTER) || IsGestureDetected(GESTURE_TAP)) {
+                currentState = STATE_CHOOSING_SLOT;
+            }
+        } break;
+
+        case STATE_CHOOSING_SLOT: {
+            // Lógica para mover a seleção do slot com teclas de seta (esquerda/direita)
+            if (IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_A)) {
+                selectedSlot--;
+                if (selectedSlot < 0) selectedSlot = 0;
+            }
+            if (IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_D)) {
+                selectedSlot++;
+                // TOP_SLOTS é definido como 7
+                if (selectedSlot >= TOP_SLOTS) selectedSlot = TOP_SLOTS - 1; 
+            }
+
+            // Confirmação: passa para a próxima fase (pergunta)
+            if (IsKeyPressed(KEY_ENTER)) {
                 currentState = STATE_ASKING_QUESTION;
             }
         } break;
@@ -211,7 +231,7 @@ void UpdateGame(void) {
             ResetPredictionText();
 
             if ((IsKeyPressed(KEY_SPACE) || IsGestureDetected(GESTURE_TAP))) {
-                SpawnBall(lastAnswerWasCorrect);
+                SpawnBall(lastAnswerWasCorrect, selectedSlot);
                 currentState = STATE_BALL_FALLING;
             }
         } break;
@@ -239,7 +259,7 @@ void UpdateGame(void) {
                 if (currentStage >= NUM_ETAPAS) {
                     currentState = STATE_NAME_INPUT;
                 } else {
-                    currentState = STATE_ASKING_QUESTION;
+                    currentState = STATE_CHOOSING_SLOT;
                     slotColor = COLOR_NEON_BLUE;
                 }
             }
@@ -312,6 +332,10 @@ void DrawGame(void) {
     for (int i = 0; i < TOP_SLOTS; i++) {
         float x0 = leftWallX + i * topSlotWidth;
         float xMid = x0 + topSlotWidth / 2;
+
+        if (currentState == STATE_CHOOSING_SLOT && i == selectedSlot) {
+            DrawRectangle(x0 + 1, WALL_TOP_Y - 41, topSlotWidth - 2, 32, (Color){255, 200, 0, 80}); 
+        }
         
         DrawRectangleLines(x0 + 2, WALL_TOP_Y - 40, topSlotWidth - 4, 30, (Color){100, 150, 255, 200});
         DrawText(TextFormat("%d", i + 1), (int)(xMid - 6), WALL_TOP_Y - 38, 24, COLOR_NEON_BLUE);
@@ -379,6 +403,7 @@ void DrawGame(void) {
 
     switch (currentState) {
         case STATE_START_SCREEN: DrawStartScreenHUD(); break;
+        case STATE_CHOOSING_SLOT: DrawChoosingSlotHUD(); break;
         case STATE_ASKING_QUESTION: DrawQuiz(currentStage); break;
         case STATE_WAITING_FOR_BALL: DrawWaitingForBallHUD(lastAnswerWasCorrect); break;
         case STATE_BALL_FALLING: break;

@@ -9,5 +9,6 @@ void DrawWaitingForBallHUD(bool lastAnswerWasCorrect);
 void DrawBallLandedHUD(bool lastAnswerWasCorrect, int currentStage);
 void DrawNameInputHUD(const char* playerName, int letterCount, long long totalScore);
 void DrawGameOverHUD(long long totalScore);
+void DrawChoosingSlotHUD(void);
 
 #endif
