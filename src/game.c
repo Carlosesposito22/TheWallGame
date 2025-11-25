@@ -20,11 +20,13 @@
 #define BOTTOM_SLOTS 13
 #define WALL_BASE_Y 750.0f
 #define WALL_TOP_Y 100.0f
+#define WALL_HEIGHT_RATIO 1.5f
 
 #define MAX_PINS 500 
 
 static float leftWallX;
 static float rightWallX;
+static Music gameMusic;
 
 typedef enum {
     STATE_START_SCREEN,
@@ -60,7 +62,7 @@ long long totalScore;
 extern GameScreen currentScreen;
 
 void InitGame(void) {
-    currentState = STATE_CHOOSING_SLOT;
+    currentState = STATE_START_SCREEN;
     currentStage = 0;
     totalScore = 0;
     totalBolas = 0;
@@ -74,6 +76,10 @@ void InitGame(void) {
     InitPredictionSystem();
     InitBalls();
     InitParticles();
+
+    gameMusic = LoadMusicStream("assets/musicagamex.mp3"); 
+    PlayMusicStream(gameMusic); // Inicia 
+    SetMusicVolume(gameMusic, 0.9f);
 
     // Define uma margem fixa para garantir que o jogo caiba na tela
     const float wallMargin = 350.0f; 
@@ -172,6 +178,8 @@ void UpdateGame(void) {
     float dt = GetFrameTime();
     UpdateSlowMotion();
     dt = ApplyTimeScale(dt);
+
+    UpdateMusicStream(gameMusic);
 
     if (comboDisplayTimer > 0.0f) {
         comboDisplayTimer -= dt;

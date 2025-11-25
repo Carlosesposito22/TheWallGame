@@ -141,10 +141,43 @@ void DrawGameOverHUD(long long totalScore)
 }
 
 void DrawChoosingSlotHUD(void) {
-    DrawText("ESCOLHA O SLOT DE LANÇAMENTO", 
-             SCREEN_WIDTH / 2 - MeasureText("ESCOLHA O SLOT DE LANÇAMENTO", 30) / 2, 
-             SCREEN_HEIGHT / 2, 30, WHITE);
-    DrawText("Use SETAS ou A/D para mover. ENTER para confirmar.", 
-             SCREEN_WIDTH / 2 - MeasureText("Use SETAS ou A/D para mover. ENTER para confirmar.", 20) / 2, 
-             SCREEN_HEIGHT / 2 + 40, 20, COLOR_NEON_BLUE);
+    // Definições de texto
+    const char* mainText = "ESCOLHA O SLOT DE LANÇAMENTO";
+    const int mainFontSize = 30;
+    const int mainTextX = SCREEN_WIDTH / 2 - MeasureText(mainText, mainFontSize) / 2;
+    const int mainTextY = SCREEN_HEIGHT / 2;
+    
+    const char* subText = "Use SETAS ou A/D para mover. ENTER para confirmar.";
+    const int subFontSize = 20;
+    const int subTextX = SCREEN_WIDTH / 2 - MeasureText(subText, subFontSize) / 2;
+    const int subTextY = SCREEN_HEIGHT / 2 + 40;
+    
+    const int padding = 15; // Espaçamento ao redor do texto
+    
+    // 1. Desenha o fundo do texto principal (para alta visibilidade)
+    int mainTextWidth = MeasureText(mainText, mainFontSize);
+    int mainBgX = mainTextX - padding;
+    int mainBgY = mainTextY - padding;
+    int mainBgWidth = mainTextWidth + 2 * padding;
+    int mainBgHeight = mainFontSize + 2 * padding;
+    
+    // Fundo escuro semitransparente (ex: preto com 70% de opacidade)
+    DrawRectangle(mainBgX, mainBgY, mainBgWidth, mainBgHeight, (Color){ 0, 0, 0, 180 }); 
+    // Borda neon para destacar
+    DrawRectangleLines(mainBgX, mainBgY, mainBgWidth, mainBgHeight, COLOR_NEON_GOLD); 
+
+    // 2. Desenha o texto principal
+    DrawText(mainText, mainTextX, mainTextY, mainFontSize, WHITE);
+    
+    // 3. Desenha o fundo do texto de instrução (opcional, mais sutil)
+    int subTextWidth = MeasureText(subText, subFontSize);
+    int subBgX = subTextX - 10;
+    int subBgY = subTextY - 8;
+    int subBgWidth = subTextWidth + 20;
+    int subBgHeight = subFontSize + 16;
+
+    DrawRectangle(subBgX, subBgY, subBgWidth, subBgHeight, (Color){ 20, 20, 40, 150 });
+    
+    // 4. Desenha o texto de instrução
+    DrawText(subText, subTextX, subTextY, subFontSize, COLOR_NEON_BLUE);
 }
