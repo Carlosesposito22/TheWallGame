@@ -73,6 +73,7 @@ void InitGame(void) {
     comboDisplayTimer = 0.0f;
     memset(playerName, 0, sizeof(playerName));
 
+    InitQuiz();
     InitPredictionSystem();
     InitBalls();
     InitParticles();
