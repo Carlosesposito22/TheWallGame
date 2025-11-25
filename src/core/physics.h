@@ -13,3 +13,5 @@ int UpdateBallPhysics(
     int lastAnswerWasCorrect,
     float dt
 );
+
+void AddWall(float x1, float y1, float x2, float y2);

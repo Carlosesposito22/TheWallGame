@@ -14,6 +14,17 @@
 #include "core/quiz.h"
 #include "core/hud.h"
 
+#define WALL_HEIGHT_RATIO 1.5f
+#define WALL_ROWS 14
+#define TOP_SLOTS 7
+#define BOTTOM_SLOTS 15
+#define WALL_BASE_Y 750.0f
+#define WALL_TOP_Y 100.0f
+#define MAX_PINS 224
+
+static float leftWallX;
+static float rightWallX;
+
 typedef enum {
     STATE_START_SCREEN,
     STATE_ASKING_QUESTION,
@@ -24,7 +35,7 @@ typedef enum {
     STATE_GAME_OVER
 } InternalGameState;
 
-static Pin pins[NUM_PINS_X * NUM_PINS_Y];
+static Pin pins[MAX_PINS];
 static int pinCount = 0;
 static float firstPinY = 120.0f;
 static float firstSlotX;
@@ -62,28 +73,78 @@ void InitGame(void) {
     InitBalls();
     InitParticles();
 
-    // Configura pinos
+    // --- CORREÇÃO 1: Definir Paredes Simétricas e Fixas ---
+    // Define uma margem fixa para garantir que o jogo caiba na tela
+    const float wallMargin = 350.0f; 
+    
+    leftWallX  = wallMargin;
+    rightWallX = SCREEN_WIDTH - wallMargin;
+
+    // Área total utilizável entre as paredes
+    float usableWidth = rightWallX - leftWallX;
+
+    // --- CORREÇÃO 2: Pinos desenhados DENTRO do espaço das paredes ---
     pinCount = 0;
-    float totalBoardWidth = NUM_PINS_X * PIN_SPACING;
-    for (int y = 0; y < NUM_PINS_Y; y++) {
-        for (int x = 0; x < NUM_PINS_X; x++) {
-            float offset = (y % 2 == 0) ? 0 : PIN_SPACING * 0.5f;
-            pins[pinCount].x = SCREEN_WIDTH * 0.5f - totalBoardWidth * 0.5f + offset + x * PIN_SPACING;
-            pins[pinCount].y = firstPinY + y * PIN_SPACING;
-            pins[pinCount].color = (Color){180, 180, 200, 255};
-            pins[pinCount].visible = 1;
-            pinCount++;
+    float wallHeight = WALL_BASE_Y - WALL_TOP_Y;
+    
+    for (int row = 0; row < WALL_ROWS; row++) {
+        float t = (float)row / (WALL_ROWS - 1); 
+        
+        // Define a largura da linha de pinos. 
+        // Subtraímos um pouco (PIN_SPACING) para garantir que não toquem na parede
+        float currentRowWidth = usableWidth - PIN_SPACING;
+        
+        // Calcula quantos pinos cabem nesta largura
+        int pinsPerRow = (int)(currentRowWidth / PIN_SPACING);
+        
+        // Centraliza os pinos calculando o ponto de partida (x inicial)
+        // Pega a parede esquerda + metade da sobra de espaço
+        float rowRealWidth = (pinsPerRow - 1) * PIN_SPACING;
+        float startX = leftWallX + (usableWidth - rowRealWidth) * 0.5f;
+
+        // Deslocamento para efeito intercalado (linhas pares vs ímpares)
+        float staggerOffset = (row % 2 == 0) ? 0.0f : PIN_SPACING * 0.5f;
+        
+        // Ajuste fino para centralizar o stagger
+        if (row % 2 != 0) {
+            pinsPerRow--; // Uma linha intercalada costuma ter um pino a menos para caber
+            startX += PIN_SPACING * 0.5f;
+        }
+
+        for (int col = 0; col < pinsPerRow; col++) {
+            if (pinCount >= MAX_PINS) break;
+
+            float x = startX + col * PIN_SPACING;
+            float y = WALL_TOP_Y + t * wallHeight;
+
+            // Verificação de segurança extra para não desenhar fora
+            if (x > leftWallX + 5 && x < rightWallX - 5) {
+                pins[pinCount].x = x;
+                pins[pinCount].y = y;
+                pins[pinCount].color = COLOR_NEON_BLUE;
+                pins[pinCount].visible = 1;
+                pinCount++;
+            }
         }
     }
 
-    // Configura slots
-    slotWidth = PIN_SPACING;
-    baseY = 750;
-    float totalSlotsWidth = SLOT_COUNT * slotWidth;
-    firstSlotX = (SCREEN_WIDTH - totalSlotsWidth) * 0.5f;
+    // --- CORREÇÃO 3: Gavetas de baixo (Bottom Slots) ocupando todo o espaço ---
+    slotWidth  = usableWidth / (float)BOTTOM_SLOTS;
+    firstSlotX = leftWallX;
+    baseY      = WALL_BASE_Y;
 
-    int valoresBase[SLOT_COUNT] = {1, 10, 1000, 100, 500, 100, 1000, 100, 500, 100, 1000, 10, 1};
-    for (int i = 0; i < SLOT_COUNT; i++) {
+    // Adiciona as paredes físicas para colisão
+    AddWall(leftWallX - 1.0f,  WALL_TOP_Y, leftWallX - 1.0f,  WALL_BASE_Y);
+    AddWall(rightWallX + 1.0f, WALL_TOP_Y, rightWallX + 1.0f, WALL_BASE_Y);
+
+    // Distribui valores
+    int valoresBase[BOTTOM_SLOTS] = {
+        1, 5, 10, 25, 50000, 100, 250,
+        500, 25000, 100, 50, 25, 10, 5, 1
+    };
+    // Garante que não estoure o array se BOTTOM_SLOTS for diferente do tamanho de valoresBase
+    int limit = (BOTTOM_SLOTS < 15) ? BOTTOM_SLOTS : 15;
+    for (int i = 0; i < limit; i++) {
         slotValues[i] = valoresBase[i];
     }
 }
@@ -204,22 +265,67 @@ void DrawGame(void) {
     // Fundo gradiente moderno
     for (int i = 0; i < SCREEN_HEIGHT; i++) {
         float t = (float)i / SCREEN_HEIGHT;
-        Color gradColor = (Color){
-            COLOR_BG.r + (int)(t * 8),
-            COLOR_BG.g + (int)(t * 12),
-            COLOR_BG.b + (int)(t * 18),
+        Color gradColor = {
+            (unsigned char)(10 + 40 * t),
+            (unsigned char)(20 + 40 * t),
+            (unsigned char)(40 + 80 * t),
             255
         };
         DrawRectangle(0, i, SCREEN_WIDTH, 1, gradColor);
     }
 
+    // Moldura arqueada com LED
+    int edgeThickness = 10;
+    for (int i = 0; i < edgeThickness; i++) {
+        DrawLineEx((Vector2){i, WALL_TOP_Y + i},
+                (Vector2){SCREEN_WIDTH - i, WALL_TOP_Y + i},
+                2, COLOR_NEON_BLUE);
+        DrawLineEx((Vector2){i, WALL_BASE_Y - i},
+                (Vector2){SCREEN_WIDTH - i, WALL_BASE_Y - i},
+                2, COLOR_NEON_BLUE);
+    }
+
+    // --- CORREÇÃO 4: Slots Superiores (Top Slots) ocupando todo espaço entre paredes ---
+    float totalWallWidth = rightWallX - leftWallX;
+    float topSlotWidth = totalWallWidth / (float)TOP_SLOTS;
+    
+    for (int i = 0; i < TOP_SLOTS; i++) {
+        // Começa exatamente na parede esquerda
+        float x0 = leftWallX + i * topSlotWidth;
+        float xMid = x0 + topSlotWidth / 2;
+        
+        DrawRectangleLines(x0 + 2, WALL_TOP_Y - 40, topSlotWidth - 4, 30, (Color){100, 150, 255, 200});
+        DrawText(TextFormat("%d", i + 1), (int)(xMid - 6), WALL_TOP_Y - 38, 24, COLOR_NEON_BLUE);
+    }
+
+    // Paredes laterais visuais (Usando as coordenadas corretas)
+    DrawRectangle(leftWallX - 8, WALL_TOP_Y, 16, WALL_BASE_Y - WALL_TOP_Y, (Color){20, 60, 160, 200});
+    DrawRectangle(rightWallX - 8, WALL_TOP_Y, 16, WALL_BASE_Y - WALL_TOP_Y, (Color){20, 60, 160, 200});
+    DrawRectangleLines(leftWallX - 8, WALL_TOP_Y, 16, WALL_BASE_Y - WALL_TOP_Y, COLOR_NEON_BLUE);
+    DrawRectangleLines(rightWallX - 8, WALL_TOP_Y, 16, WALL_BASE_Y - WALL_TOP_Y, COLOR_NEON_BLUE);
+
     // Desenha pinos
     for (int i = 0; i < pinCount; i++) {
         if (pins[i].visible) {
-            DrawCircle((int)pins[i].x, (int)pins[i].y, PIN_RADIUS + 2, (Color){255, 255, 255, 60});
+            DrawCircle((int)pins[i].x, (int)pins[i].y, PIN_RADIUS * 1.6f, (Color){0, 60, 255, 80}); 
             DrawCircle((int)pins[i].x, (int)pins[i].y, PIN_RADIUS, pins[i].color);
-            DrawCircleLines((int)pins[i].x, (int)pins[i].y, PIN_RADIUS, WHITE);
+            DrawCircleLines((int)pins[i].x, (int)pins[i].y, PIN_RADIUS, (Color){180, 200, 255, 255});
         }
+    }
+
+    // Desenha gavetas de baixo (Visualização dos Retângulos de valor)
+    for (int i = 0; i < BOTTOM_SLOTS; i++) {
+        float x = firstSlotX + i * slotWidth;
+        DrawRectangleLines(x, baseY, slotWidth, 40, (Color){0, 150, 255, 255});
+        char txt[16];
+        sprintf(txt, "R$%d", slotValues[i]);
+        
+        // Ajuste no tamanho da fonte se o número for muito grande para a largura do slot
+        int fontSize = 18;
+        if (slotWidth < 50) fontSize = 14; 
+        
+        int textWidth = MeasureText(txt, fontSize);
+        DrawText(txt, x + slotWidth/2 - textWidth/2, baseY + 10, fontSize, (Color){0, 200, 255, 255});
     }
 
     // Área de slots

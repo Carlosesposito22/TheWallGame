@@ -4,6 +4,15 @@
 #include <math.h>
 #include <stdlib.h>
 
+typedef struct {
+    float x1, y1;
+    float x2, y2;
+} Wall;
+
+#define MAX_WALLS 8
+static Wall walls[MAX_WALLS];
+static int wallCount = 0;
+
 int UpdateBallPhysics(
     Ball* ball,
     Pin* pins, int pinCount,
@@ -57,14 +66,37 @@ int UpdateBallPhysics(
     // ------------------------------
     // Colisão com paredes laterais
     // ------------------------------
-    if (ball->x < BALL_RADIUS) {
-        ball->x = BALL_RADIUS;
-        ball->vx = fabsf(ball->vx) * FRICTION;
-        CreateParticles(ball->x, ball->y, COLOR_NEON_BLUE, 5);
-    } else if (ball->x > SCREEN_WIDTH - BALL_RADIUS) {
-        ball->x = SCREEN_WIDTH - BALL_RADIUS;
-        ball->vx = -fabsf(ball->vx) * FRICTION;
-        CreateParticles(ball->x, ball->y, COLOR_NEON_BLUE, 5);
+    for (int i = 0; i < wallCount; i++) {
+        Wall *w = &walls[i];
+
+        // Vetor da parede
+        float dx = w->x2 - w->x1;
+        float dy = w->y2 - w->y1;
+        float length = sqrtf(dx * dx + dy * dy);
+        if (length < 0.0001f) continue;
+
+        // Normal unitária da parede
+        float nx = -dy / length;
+        float ny = dx / length;
+
+        // Distância da bola à parede (positivo fora, negativo dentro)
+        float dist = (ball->x - w->x1) * nx + (ball->y - w->y1) * ny;
+
+        if (dist < BALL_RADIUS) {
+            // Corrige penetração
+            float penetration = BALL_RADIUS - dist;
+            ball->x += nx * penetration;
+            ball->y += ny * penetration;
+
+            // Rebate velocidade com elasticidade e atrito
+            float dot = ball->vx * nx + ball->vy * ny;
+            if (dot < 0.0f) {
+                ball->vx -= (1.0f + ELASTICITY) * dot * nx;
+                ball->vy -= (1.0f + ELASTICITY) * dot * ny;
+            }
+
+            CreateParticles(ball->x, ball->y, COLOR_NEON_BLUE, 5);
+        }
     }
 
     // ------------------------------
@@ -94,4 +126,13 @@ int UpdateBallPhysics(
     }
 
     return 0; // Continua caindo
+}
+
+void AddWall(float x1, float y1, float x2, float y2) {
+    if (wallCount >= MAX_WALLS) return;    // Limite de segurança
+    walls[wallCount].x1 = x1;
+    walls[wallCount].y1 = y1;
+    walls[wallCount].x2 = x2;
+    walls[wallCount].y2 = y2;
+    wallCount++;
 }
