@@ -6,16 +6,25 @@
 #include <stdio.h>
 
 static Pergunta perguntas[NUM_ETAPAS] = {
-    { "Qual a capital da Franca?",
-      {"1. Londres", "2. Paris", "3. Berlim"}, 1, COLOR_NEON_BLUE },
-    { "Quem pintou a Mona Lisa?",
-      {"1. Van Gogh", "2. Picasso", "3. Da Vinci"}, 2, COLOR_NEON_GOLD },
-    { "Quanto e 5 x 8?",
-      {"1. 40", "2. 45", "3. 35"}, 0, COLOR_NEON_GREEN },
-    { "Qual o maior planeta do Sistema Solar?",
-      {"1. Terra", "2. Marte", "3. Jupiter"}, 2, COLOR_NEON_PURPLE },
-    { "Em que ano o homem pisou na Lua?",
-      {"1. 1969", "2. 1975", "3. 1982"}, 0, COLOR_NEON_RED }
+    // A única Maravilha Antiga que sobreviveu
+    { "Das Sete Maravilhas do Mundo Antigo, qual é a única estrutura que ainda existe hoje?",
+      {"1. Templo de Ártemis", "2. Farol de Alexandria", "3. Grande Pirâmide de Gizé"}, 2, COLOR_NEON_BLUE },
+      
+    // O fenômeno astronômico de Júpiter
+    { "Qual planeta do nosso Sistema Solar é\nfamoso por possuir a 'Grande Mancha Vermelha',\numa tempestade gigante que é maior do que a Terra?",
+      {"1. Vênus", "2. Júpiter", "3. Saturno"}, 1, COLOR_NEON_GOLD },
+      
+    // O animal único que desafia a regra dos mamíferos
+    { "O morcego é o único mamífero que consegue voar ativamente.\nQual das seguintes categorias ele não pertence?",
+      {"1. Um mamífero placentário", "2. Um primata", "3. Um animal noturno"}, 1, COLOR_NEON_GREEN },
+      
+    // O fato curioso sobre a Nova Zelândia
+    { "Qual país insular tem uma população de ovelhas\nque supera a de humanos em mais de 5 vezes?",
+      {"1. Islândia", "2. Nova Zelândia", "3. Austrália"}, 1, COLOR_NEON_PURPLE },
+      
+    // A invenção que revolucionou as finanças digitais
+    { "Qual é o nome da primeira criptomoeda descentralizada,\ncriada em 2009 sob o pseudônimo de Satoshi Nakamoto?",
+      {"1. Ethereum", "2. Litecoin", "3. Bitcoin"}, 2, COLOR_NEON_RED }
 };
 
 void InitQuiz(void) {
