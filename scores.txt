@@ -29,8 +29,8 @@ Iniciante,1000
 carlos eduardo,1000
 carlos esposito,899
 Zero a Esquerda,500
+sas,3
 So Atraso,1
----,0
 ---,0
 ---,0
 ---,0

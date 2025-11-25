@@ -37,7 +37,6 @@ typedef enum {
 
 static Pin pins[MAX_PINS];
 static int pinCount = 0;
-static float firstPinY = 120.0f;
 static float firstSlotX;
 static float slotWidth;
 static float baseY;
@@ -102,9 +101,6 @@ void InitGame(void) {
         float rowRealWidth = (pinsPerRow - 1) * PIN_SPACING;
         float startX = leftWallX + (usableWidth - rowRealWidth) * 0.5f;
 
-        // Deslocamento para efeito intercalado (linhas pares vs ímpares)
-        float staggerOffset = (row % 2 == 0) ? 0.0f : PIN_SPACING * 0.5f;
-        
         // Ajuste fino para centralizar o stagger
         if (row % 2 != 0) {
             pinsPerRow--; // Uma linha intercalada costuma ter um pino a menos para caber
@@ -134,7 +130,7 @@ void InitGame(void) {
     baseY      = WALL_BASE_Y;
 
     // Adiciona as paredes físicas para colisão
-    AddWall(leftWallX - 1.0f,  WALL_TOP_Y, leftWallX - 1.0f,  WALL_BASE_Y);
+    AddWall(leftWallX - 1.0f, WALL_BASE_Y, leftWallX - 1.0f, WALL_TOP_Y);
     AddWall(rightWallX + 1.0f, WALL_TOP_Y, rightWallX + 1.0f, WALL_BASE_Y);
 
     // Distribui valores
