@@ -17,7 +17,7 @@
 #define WALL_HEIGHT_RATIO 1.5f
 #define WALL_ROWS 14
 #define TOP_SLOTS 7
-#define BOTTOM_SLOTS 15
+#define BOTTOM_SLOTS 13
 #define WALL_BASE_Y 750.0f
 #define WALL_TOP_Y 100.0f
 
@@ -157,8 +157,8 @@ void InitGame(void) {
 
     // Distribui valores
     int valoresBase[BOTTOM_SLOTS] = {
-        1, 5, 10, 25, 50000, 100, 250,
-        500, 25000, 100, 50, 25, 10, 5, 1
+        1, 10000, 100, 15000, 10, 30000, 100,
+        45000, 100, 60000, 100, 150000, 10
     };
     int limit = (BOTTOM_SLOTS < 15) ? BOTTOM_SLOTS : 15;
     for (int i = 0; i < limit; i++) {
