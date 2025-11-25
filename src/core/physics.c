@@ -50,8 +50,8 @@ int UpdateBallPhysics(
             float nx = dx / dist;
             float ny = dy / dist;
             float penetration = minDist - dist;
-            ball->x += nx * penetration * 0.5f;
-            ball->y += ny * penetration * 0.5f;
+            ball->x += nx * penetration * 1.01f;
+            ball->y += ny * penetration * 1.01f;
 
             float dotProduct = ball->vx * nx + ball->vy * ny;
             ball->vx = (ball->vx - 2.0f * dotProduct * nx) * ELASTICITY;

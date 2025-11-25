@@ -251,7 +251,7 @@ void DrawPredictionPanel(int totalBolas, int currentStage, int comboCount, int s
     // Se bola está ativa
     DrawText("ANÁLISE PREDITIVA:", statsPanelX + 20, 165, 16, COLOR_NEON_BLUE);
 
-    if (isBallActive && slotIndex == -1) {
+    if (isBallActive) {
         DrawText(GetAnalysisLine(0), statsPanelX + 25, 190, 16, WHITE);
         DrawText(GetAnalysisLine(1), statsPanelX + 25, 215, 14, LIGHTGRAY);
         DrawText(GetAnalysisLine(2), statsPanelX + 25, 235, 14, LIGHTGRAY);
